@@ -6,22 +6,36 @@ explicitly.
 
 ## Unreleased
 
-- Hardware-validate the current effective brightness scale against the SANlight app: `33.4%` in ioBroker is shown as the rounded value `34%` in the app.
-- Stop exposing the low-level raw brightness value as an ioBroker object, automatically remove the former `state.liveBrightnessRaw` object, and retain the raw field internally for MQTT API v1 validation and compatibility.
+No changes yet.
 
 ## 0.2.0 - 2026-07-17
 
-- Prepare the first public GitHub release and keep `package.json`, `package-lock.json`, `io-package.json` and ioBroker news on one validated version.
+- Prepare the first public GitHub release and keep `package.json`,
+  `package-lock.json`, `io-package.json` and ioBroker news on one validated
+  version.
 - Add release notes and a repeatable release checklist.
-- Use community-gateway wording in package metadata to avoid presenting the integration as an official SANlight product.
-- Add read-only ioBroker states for lamp time and current effective output from the gateway: raw brightness, empirical percentage estimate, validity flag and timestamp; keep them explicitly separate from configured MaxBrightness.
+- Use community-gateway wording in package metadata to avoid presenting the
+  integration as an official SANlight product.
+- Add read-only ioBroker states for lamp time, current effective brightness with
+  one-decimal resolution, validity and verification timestamp; keep them
+  explicitly separate from configured MaxBrightness.
+- Hardware-validate the current effective brightness scale against the SANlight
+  app: `33.4%` in ioBroker is shown as the rounded value `34%` in the app.
+- Stop exposing the low-level raw brightness value as an ioBroker object,
+  automatically remove the former `state.liveBrightnessRaw` object, and retain
+  the raw field internally for MQTT API v1 validation and compatibility.
 - Explicitly set `i18n: false` in the Admin JSON configuration because the
   current panel embeds its English labels directly and does not use external
-  translation files; add a package validation guard for this schema requirement.
-- Clarify that this is an unofficial community gateway integration, use SANlight only as a compatibility reference, and simplify the Admin host and emergency-blackout wording without changing stored settings.
-- Complete the advanced MQTT layout by placing the topic prefix on its own row and the two timing controls side by side.
+  translation files; add a package validation guard for this schema
+  requirement.
+- Clarify that this is an unofficial community gateway integration, use
+  SANlight only as a compatibility reference, and simplify the Admin host and
+  emergency-blackout wording without changing stored settings.
+- Complete the advanced MQTT layout by placing the topic prefix on its own row
+  and the two timing controls side by side.
 - Document the correct custom GitHub update path with `iobroker url` and clarify
-  that repository-based `iobroker upgrade` cannot update this unreleased adapter.
+  that repository-based `iobroker upgrade` cannot update this unreleased
+  adapter.
 - Restore Prettier formatting for the Admin JSON configuration and package
   metadata.
 - Reorganize the Admin configuration into clear connection, optional TLS,
@@ -29,13 +43,16 @@ explicitly.
   defaults; hide certificate settings until TLS is enabled.
 - Refine npm discovery keywords and omit the maintainer-only `AI_CONTEXT.md`
   file from the published package.
-- Simplify the public README and operational guide, separate required settings from advanced defaults, and remove maintainer-oriented material from the normal user path.
+- Simplify the public README and operational guide, separate required settings
+  from advanced defaults, and remove maintainer-oriented material from the
+  normal user path.
 - Complete the first live end-to-end validation against the self-contained
   SANlight gateway and local Mosquitto topology.
 - Confirm MQTT transport, gateway availability, MQTT API v1 compatibility,
-  retained lamp state, read-only refresh and reversible writes on two real lamps.
-- Replace internal build-environment package URLs in `package-lock.json` with the
-  public npm registry and add a regression guard.
+  retained lamp state, read-only refresh and reversible writes on two real
+  lamps.
+- Replace internal build-environment package URLs in `package-lock.json` with
+  the public npm registry and add a regression guard.
 - Keep runtime TypeScript imports compatible with ioBroker's validated esbuild
   0.11.23 environment and add a regression guard.
 - Add human-oriented installation, update and troubleshooting documentation.
@@ -60,8 +77,8 @@ explicitly.
   command/result correlation.
 - Add structured gateway, lamp and command objects without permanent per-command
   object growth.
-- Add requested-versus-verified brightness handling, bounded pending commands and
-  slider debouncing.
+- Add requested-versus-verified brightness handling, bounded pending commands
+  and slider debouncing.
 - Keep explicit blackout disabled by default.
 - Add Admin JSON configuration, protocol tests, CI, security guidance and
   AI-assisted support instructions.
