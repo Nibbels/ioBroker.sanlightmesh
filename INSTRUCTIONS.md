@@ -140,6 +140,11 @@ results can be partial and are reflected in the affected lamp command states.
 The displayed clock values are snapshots. The adapter changes lamp clocks only
 after an explicit sync or apply action.
 
+On the validated two-lamp setup, restoring power reset both lamp clocks to
+`00:00:00`. After a power interruption, wait until the lamps are reachable, use
+a read-only refresh when a fresh snapshot is useful, then trigger
+`gateway.control.syncAllClocksNow` to restore gateway local time.
+
 ## Blackout
 
 Blackout is disabled by default. Enable it only after confirming that the
@@ -195,10 +200,10 @@ confirm that the instance is enabled and check the four health states.
 
 ### Tagged release installation
 
-After the `v0.2.0` tag exists, install that immutable source revision with:
+Install the current immutable v0.3.0 source revision with:
 
 ```bash
-iobroker url Nibbels/ioBroker.sanlightmesh#v0.2.0 sanlightmesh --debug
+iobroker url Nibbels/ioBroker.sanlightmesh#v0.3.0 sanlightmesh --debug
 ```
 
 Use the untagged GitHub URL only when intentionally testing the current `main`

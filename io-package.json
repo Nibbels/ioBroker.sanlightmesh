@@ -1,8 +1,21 @@
 {
 	"common": {
 		"name": "sanlightmesh",
-		"version": "0.2.0",
+		"version": "0.3.0",
 		"news": {
+			"0.3.0": {
+				"en": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"de": "Manuelle Lampenuhr-Synchronisierung und Zielzeiten mit Gateway-Uhr-Snapshots und sekundengenauen Zuständen ergänzt.",
+				"ru": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"pt": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"nl": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"fr": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"it": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"es": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"pl": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"uk": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
+				"zh-cn": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states."
+			},
 			"0.2.0": {
 				"en": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
 				"de": "Live-Lampenausgabe, übersichtlichere Admin-Konfiguration und sicherere Gateway-Dokumentation ergänzt.",

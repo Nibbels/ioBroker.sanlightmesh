@@ -21,10 +21,11 @@ The adapter is installed directly from GitHub and is not yet part of an ioBroker
     - one read-only lamp refresh;
     - live-output states;
     - no Admin schema warning.
-6. Create the annotated tag `v0.2.0` on the tested commit.
-7. Create a GitHub release from the tag and paste `docs/RELEASE_NOTES_0.2.0.md`.
+6. Create the annotated tag `v<version>` on the tested commit.
+7. Create a GitHub release from the tag and paste the matching `docs/RELEASE_NOTES_<version>.md`.
 
-Do not move or recreate a published release tag. A later correction receives a new patch version.
+Do not move, delete and recreate, or otherwise repoint a published release tag.
+A later correction receives a new patch version.
 
 ## Installation sources
 
@@ -34,10 +35,10 @@ Current development branch:
 iobroker url https://github.com/Nibbels/ioBroker.sanlightmesh --debug
 ```
 
-Immutable `v0.2.0` release after the tag is published:
+Current immutable `v0.3.0` release after the tag is published:
 
 ```bash
-iobroker url Nibbels/ioBroker.sanlightmesh#v0.2.0 sanlightmesh --debug
+iobroker url Nibbels/ioBroker.sanlightmesh#v0.3.0 sanlightmesh --debug
 ```
 
 The normal repository-based `iobroker upgrade sanlightmesh` command remains unavailable until the adapter is accepted into an ioBroker repository.

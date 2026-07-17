@@ -6,6 +6,8 @@ explicitly.
 
 ## Unreleased
 
+## 0.3.0 - 2026-07-18
+
 - Hardware-validate the current effective brightness scale against the SANlight app: `33.4%` in ioBroker is shown as the rounded value `34%` in the app.
 - Stop exposing the low-level raw brightness value as an ioBroker object, automatically remove the former `state.liveBrightnessRaw` object, and retain the raw field internally for MQTT API v1 validation and compatibility.
 - Add explicit per-lamp and all-lamp clock synchronization and arbitrary clock
@@ -17,6 +19,8 @@ explicitly.
   for every clock write; do not add periodic lamp polling.
 - Accept additive `sync-clock`, `set-clock` and `refresh-gateway-info` commands
   within pre-stable MQTT API v1.
+- Hardware-validate single-lamp and all-lamp refresh, synchronization and arbitrary targets, including invalid-input restoration and automatic one-shot control reset.
+- Confirm that both validated lamp clocks restart at `00:00:00` after power restoration and can be recovered with one verified all-lamp synchronization.
 
 ## 0.2.0 - 2026-07-17
 

@@ -74,7 +74,7 @@ User-writable targets and buttons:
 - `applyClockTarget`
 - `blackout`
 
-The control target is separate from the verified report. A requested value never overwrites `state.maxBrightness` before gateway readback. Clock targets accept `HH:MM` or `HH:MM:SS`; `24:00` is invalid. Editing a clock target only updates the paired input states. A lamp write occurs only when the explicit apply or sync button is used.
+The control target is separate from the verified report. A requested value never overwrites `state.maxBrightness` before gateway readback. Clock targets accept `HH:MM` or `HH:MM:SS`; `24:00` is invalid. Editing a clock target only updates the paired input states. A lamp write occurs only when the explicit apply or sync button is used. On the validated two-lamp setup, restoring power reset both lamp clocks to `00:00:00`; synchronization remains explicit.
 
 ### `command`
 

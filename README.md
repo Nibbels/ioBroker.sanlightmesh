@@ -125,7 +125,9 @@ time with `control.syncClockNow`, or set to an arbitrary wall/virtual time throu
 
 `gateway.control.refreshInfo` refreshes the gateway's local-clock reference
 without reading any lamp or consuming a Bluetooth Mesh sequence number. Lamp
-clocks change only after an explicit sync or apply action.
+clocks change only after an explicit sync or apply action. On the validated
+two-lamp setup, restoring power reset both lamp clocks to `00:00:00`; use the
+explicit synchronization controls after the lamps become reachable again.
 
 ## Multiple gateways
 
@@ -143,8 +145,10 @@ One adapter instance manages exactly one gateway ID and broker connection. Creat
 ## Status
 
 The documented topology was validated end to end on real Raspberry Pi hardware
-on 2026-07-16 and 2026-07-17, including adapter startup, MQTT API v1 compatibility, object
-creation, read-only refresh and reversible brightness writes. Version `0.2.0` is the immutable released baseline. Clock control is being developed for `0.3.0`; the adapter remains pre-1.0.
+from 2026-07-16 through 2026-07-18, including adapter startup, MQTT API v1
+compatibility, object creation, read-only refresh, reversible brightness writes,
+manual clock control, a lamp power cycle and recovery synchronization. Version
+`0.3.0` is the current immutable release; the adapter remains pre-1.0.
 
 ## Documentation
 
