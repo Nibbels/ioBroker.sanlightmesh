@@ -196,7 +196,7 @@ class Sanlightmesh extends utils.Adapter {
 						'Gateway local clock in seconds since midnight',
 						'Lokale Gateway-Uhr in Sekunden seit Mitternacht',
 						'number',
-						'value.time',
+						'value',
 						false,
 						0,
 						's',
@@ -254,7 +254,7 @@ class Sanlightmesh extends utils.Adapter {
 						'Clock target in seconds since midnight',
 						'Ziel-Uhrzeit in Sekunden seit Mitternacht',
 						'number',
-						'value.time',
+						'level',
 						true,
 						0,
 						's',
@@ -341,6 +341,10 @@ class Sanlightmesh extends utils.Adapter {
 			],
 		];
 		for (const [id, common] of states) await this.ensureObject(id, { type: 'state', common, native: {} });
+		await Promise.all([
+			this.extendObjectAsync('gateway.info.localClockSeconds', { common: { role: 'value' } }),
+			this.extendObjectAsync('gateway.control.clockTargetSeconds', { common: { role: 'level' } }),
+		]);
 		await this.initializeClockTargetPair('gateway.control');
 	}
 
@@ -879,7 +883,7 @@ class Sanlightmesh extends utils.Adapter {
 						'Lamp clock in seconds since midnight',
 						'Lampenuhr in Sekunden seit Mitternacht',
 						'number',
-						'value.time',
+						'value',
 						false,
 						0,
 						's',
@@ -973,7 +977,7 @@ class Sanlightmesh extends utils.Adapter {
 						'Clock target in seconds since midnight',
 						'Ziel-Uhrzeit in Sekunden seit Mitternacht',
 						'number',
-						'value.time',
+						'level',
 						true,
 						0,
 						's',
@@ -1040,6 +1044,8 @@ class Sanlightmesh extends utils.Adapter {
 			});
 		}
 		await Promise.all([
+			this.extendObjectAsync(`lamps.${normalized}.state.lampClockSeconds`, { common: { role: 'value' } }),
+			this.extendObjectAsync(`lamps.${normalized}.control.clockTargetSeconds`, { common: { role: 'level' } }),
 			this.extendObjectAsync(`lamps.${normalized}.state.liveBrightnessPercentEstimate`, {
 				common: this.stateCommon(
 					'Current effective brightness',
