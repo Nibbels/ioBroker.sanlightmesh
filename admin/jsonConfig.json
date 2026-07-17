@@ -1,0 +1,135 @@
+{
+	"i18n": false,
+	"type": "panel",
+	"items": {
+		"_intro": {
+			"type": "staticText",
+			"text": "One adapter instance manages exactly one gateway installation.\nUse the connection values printed by the gateway installer.",
+			"newLine": true
+		},
+		"_connectionHeader": {
+			"type": "header",
+			"size": 3,
+			"text": "Connection",
+			"newLine": true
+		},
+		"mqttHost": {
+			"type": "text",
+			"label": "Gateway host",
+			"help": "LAN hostname or IP address of the Raspberry Pi that runs the unofficial community gateway for SANlight Mesh and its local MQTT broker.\nUse localhost only when ioBroker and the complete gateway run on the same host.",
+			"newLine": true,
+			"sm": 12,
+			"md": 8
+		},
+		"mqttPort": {
+			"type": "number",
+			"label": "MQTT port",
+			"min": 1,
+			"max": 65535,
+			"default": 1883,
+			"sm": 12,
+			"md": 4
+		},
+		"gatewayId": {
+			"type": "text",
+			"label": "Gateway ID",
+			"help": "Enter the exact gateway ID printed by the gateway installer.\nThis instance ignores every other gateway ID.",
+			"newLine": true,
+			"sm": 12,
+			"md": 12
+		},
+		"mqttUsername": {
+			"type": "text",
+			"label": "MQTT username",
+			"help": "Enter the ioBroker MQTT username printed by the gateway installer.",
+			"newLine": true,
+			"sm": 12,
+			"md": 6
+		},
+		"mqttPassword": {
+			"type": "password",
+			"label": "MQTT password",
+			"help": "Enter the protected ioBroker MQTT password created by the gateway installer.",
+			"sm": 12,
+			"md": 6
+		},
+		"_tlsHeader": {
+			"type": "header",
+			"size": 3,
+			"text": "TLS (optional)",
+			"newLine": true
+		},
+		"mqttTls": {
+			"type": "checkbox",
+			"label": "Use MQTT TLS",
+			"help": "Leave disabled for the documented authenticated trusted-LAN setup on port 1883.",
+			"default": false,
+			"newLine": true
+		},
+		"mqttRejectUnauthorized": {
+			"type": "checkbox",
+			"label": "Verify MQTT server certificate",
+			"help": "Keep enabled.\nDisable only for a deliberately trusted test setup with a self-signed certificate.",
+			"default": true,
+			"hidden": "!data.mqttTls",
+			"newLine": true
+		},
+		"mqttCaPath": {
+			"type": "text",
+			"label": "Custom CA certificate path",
+			"help": "Optional path on the ioBroker host.\nLeave empty to use the operating system trust store.",
+			"hidden": "!data.mqttTls",
+			"newLine": true,
+			"sm": 12,
+			"md": 8
+		},
+		"_advancedHeader": {
+			"type": "header",
+			"size": 3,
+			"text": "Advanced MQTT settings",
+			"newLine": true
+		},
+		"topicPrefix": {
+			"type": "text",
+			"label": "Topic prefix",
+			"help": "Keep sanlightmesh/v1 unless the gateway was deliberately configured with another prefix.\nWildcards are not accepted.",
+			"default": "sanlightmesh/v1",
+			"newLine": true,
+			"sm": 12,
+			"md": 12
+		},
+		"commandTtlSeconds": {
+			"type": "number",
+			"label": "Command lifetime in seconds",
+			"min": 1,
+			"max": 300,
+			"default": 30,
+			"sm": 12,
+			"md": 6,
+			"newLine": true
+		},
+		"brightnessDebounceMs": {
+			"type": "number",
+			"label": "Brightness debounce in milliseconds",
+			"help": "Combines rapid slider changes before sending one command.\nThe gateway still enforces its own safety interval.",
+			"min": 0,
+			"max": 5000,
+			"default": 1000,
+			"sm": 12,
+			"md": 6
+		},
+		"_safetyHeader": {
+			"type": "header",
+			"size": 3,
+			"text": "Safety",
+			"newLine": true
+		},
+		"allowBlackout": {
+			"type": "checkbox",
+			"label": "Enable emergency blackout controls",
+			"help": "Leave disabled for normal operation.\nEnabling this exposes commands that can immediately switch all controlled lamps off. The gateway still requires its protected blackout confirmation workflow.",
+			"default": false,
+			"newLine": true
+		}
+	}
+}

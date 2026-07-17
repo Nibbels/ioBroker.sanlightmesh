@@ -1,0 +1,69 @@
+{
+	"name": "iobroker.sanlightmesh",
+	"version": "0.2.0",
+	"description": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+	"author": {
+		"name": "Nibbels"
+	},
+	"contributors": [],
+	"homepage": "https://github.com/Nibbels/ioBroker.sanlightmesh",
+	"license": "MIT",
+	"keywords": [
+		"iobroker",
+		"iobroker-adapter",
+		"sanlight",
+		"sanlight-evo",
+		"mqtt",
+		"mqtt-gateway",
+		"bluetooth-mesh",
+		"home-automation",
+		"lighting-control",
+		"grow-light"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Nibbels/ioBroker.sanlightmesh.git"
+	},
+	"bugs": {
+		"url": "https://github.com/Nibbels/ioBroker.sanlightmesh/issues"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"main": "src/main.ts",
+	"files": [
+		"admin/**/*.{json,json5,png,svg}",
+		"src/",
+		"io-package.json",
+		"LICENSE",
+		"README.md",
+		"INSTRUCTIONS.md",
+		"docs/",
+		"CHANGELOG.md",
+		"SECURITY.md"
+	],
+	"scripts": {
+		"clean": "node -e \"require('node:fs').rmSync('build',{recursive:true,force:true});require('node:fs').rmSync('build-test',{recursive:true,force:true})\"",
+		"prebuild": "npm run clean",
+		"build": "tsc -p tsconfig.json",
+		"watch": "tsc -p tsconfig.json --watch",
+		"check": "tsc --noEmit -p tsconfig.json",
+		"pretest:unit": "npm run clean",
+		"test:unit": "tsc -p tsconfig.test.json && node scripts/run-unit-tests.mjs",
+		"test:package": "node scripts/validate-package.mjs",
+		"test": "npm run check && npm run test:unit && npm run test:package && npm run format:check",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"dependencies": {
+		"@iobroker/adapter-core": "^3.4.3",
+		"mqtt": "^5.15.2"
+	},
+	"devDependencies": {
+		"@tsconfig/node20": "^20.1.9",
+		"@types/iobroker": "npm:@iobroker/types@^7.2.2",
+		"@types/node": "^20.19.28",
+		"prettier": "^3.8.3",
+		"typescript": "~5.9.3"
+	}
+}

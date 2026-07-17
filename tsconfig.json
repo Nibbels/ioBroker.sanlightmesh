@@ -1,0 +1,23 @@
+{
+	"extends": "@tsconfig/node20/tsconfig.json",
+	"compilerOptions": {
+		"allowJs": false,
+		"declaration": false,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
+		"noUncheckedIndexedAccess": true,
+		"outDir": "build",
+		"resolveJsonModule": true,
+		"rootDir": "src",
+		"sourceMap": true,
+		"strict": true,
+		"target": "ES2022",
+		"types": ["node", "iobroker"]
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["build", "node_modules", "test"]
+}

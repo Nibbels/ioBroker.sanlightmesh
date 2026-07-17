@@ -1,0 +1,17 @@
+version: 2
+updates:
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: monthly
+          day: monday
+          time: '05:00'
+          timezone: Europe/Berlin
+      cooldown:
+          default-days: 14
+      groups:
+          development-dependencies:
+              dependency-type: development
+      ignore:
+          - dependency-name: '@types/node'
+            update-types: ['version-update:semver-major', 'version-update:semver-minor']

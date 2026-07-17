@@ -1,0 +1,13 @@
+node_modules/
+build/
+build-test/
+coverage/
+.tmp/
+.dev-server/
+*.tgz
+*.log
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example

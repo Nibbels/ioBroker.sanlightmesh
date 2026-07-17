@@ -1,0 +1,202 @@
+{
+	"common": {
+		"name": "sanlightmesh",
+		"version": "0.2.0",
+		"news": {
+			"0.2.0": {
+				"en": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"de": "Live-Lampenausgabe, übersichtlichere Admin-Konfiguration und sicherere Gateway-Dokumentation ergänzt.",
+				"ru": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"pt": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"nl": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"fr": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"it": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"es": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"pl": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"uk": "Add live lamp output states, clearer Admin configuration and safer gateway documentation.",
+				"zh-cn": "Add live lamp output states, clearer Admin configuration and safer gateway documentation."
+			},
+			"0.1.0": {
+				"en": "Initial GitHub development release",
+				"de": "Erste Entwicklungsfassung für die Installation über GitHub",
+				"ru": "Initial GitHub development release",
+				"pt": "Initial GitHub development release",
+				"nl": "Initial GitHub development release",
+				"fr": "Initial GitHub development release",
+				"it": "Initial GitHub development release",
+				"es": "Initial GitHub development release",
+				"pl": "Initial GitHub development release",
+				"uk": "Initial GitHub development release",
+				"zh-cn": "Initial GitHub development release"
+			}
+		},
+		"titleLang": {
+			"en": "SANlight Mesh",
+			"de": "SANlight Mesh",
+			"ru": "SANlight Mesh",
+			"pt": "SANlight Mesh",
+			"nl": "SANlight Mesh",
+			"fr": "SANlight Mesh",
+			"it": "SANlight Mesh",
+			"es": "SANlight Mesh",
+			"pl": "SANlight Mesh",
+			"uk": "SANlight Mesh",
+			"zh-cn": "SANlight Mesh"
+		},
+		"desc": {
+			"en": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"de": "Native ioBroker-Integration für das Community-MQTT-Gateway für SANlight Mesh",
+			"ru": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"pt": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"nl": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"fr": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"it": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"es": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"pl": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"uk": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
+			"zh-cn": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh"
+		},
+		"authors": ["Nibbels"],
+		"keywords": ["sanlight", "sanlight-evo", "bluetooth-mesh", "mqtt", "mqtt-gateway", "lighting", "home-automation"],
+		"license": "MIT",
+		"licenseInformation": {
+			"type": "free",
+			"license": "MIT"
+		},
+		"platform": "Javascript/Node.js",
+		"icon": "sanlightmesh.png",
+		"enabled": false,
+		"extIcon": "https://raw.githubusercontent.com/Nibbels/ioBroker.sanlightmesh/main/admin/sanlightmesh.png",
+		"readme": "https://github.com/Nibbels/ioBroker.sanlightmesh/blob/main/README.md",
+		"loglevel": "info",
+		"tier": 3,
+		"mode": "daemon",
+		"type": "lighting",
+		"compact": true,
+		"connectionType": "local",
+		"dataSource": "push",
+		"adminUI": {
+			"config": "json"
+		},
+		"dependencies": [
+			{
+				"js-controller": ">=6.0.11"
+			}
+		],
+		"globalDependencies": [
+			{
+				"admin": ">=7.0.23"
+			}
+		],
+		"protectedNative": ["mqttPassword"],
+		"encryptedNative": ["mqttPassword"]
+	},
+	"native": {
+		"mqttHost": "",
+		"mqttPort": 1883,
+		"mqttTls": false,
+		"mqttRejectUnauthorized": true,
+		"mqttCaPath": "",
+		"mqttUsername": "",
+		"mqttPassword": "",
+		"topicPrefix": "sanlightmesh/v1",
+		"gatewayId": "",
+		"commandTtlSeconds": 30,
+		"brightnessDebounceMs": 1000,
+		"allowBlackout": false
+	},
+	"objects": [],
+	"instanceObjects": [
+		{
+			"_id": "info",
+			"type": "channel",
+			"common": {
+				"name": {
+					"en": "Information",
+					"de": "Information"
+				}
+			},
+			"native": {}
+		},
+		{
+			"_id": "info.connection",
+			"type": "state",
+			"common": {
+				"name": {
+					"en": "Ready for commands",
+					"de": "Bereit für Befehle"
+				},
+				"type": "boolean",
+				"role": "indicator.connected",
+				"read": true,
+				"write": false,
+				"def": false
+			},
+			"native": {}
+		},
+		{
+			"_id": "info.mqttConnected",
+			"type": "state",
+			"common": {
+				"name": {
+					"en": "MQTT connected",
+					"de": "MQTT verbunden"
+				},
+				"type": "boolean",
+				"role": "indicator.connected",
+				"read": true,
+				"write": false,
+				"def": false
+			},
+			"native": {}
+		},
+		{
+			"_id": "info.gatewayOnline",
+			"type": "state",
+			"common": {
+				"name": {
+					"en": "Gateway online",
+					"de": "Gateway online"
+				},
+				"type": "boolean",
+				"role": "indicator.connected",
+				"read": true,
+				"write": false,
+				"def": false
+			},
+			"native": {}
+		},
+		{
+			"_id": "info.protocolCompatible",
+			"type": "state",
+			"common": {
+				"name": {
+					"en": "Protocol compatible",
+					"de": "Protokoll kompatibel"
+				},
+				"type": "boolean",
+				"role": "indicator",
+				"read": true,
+				"write": false,
+				"def": false
+			},
+			"native": {}
+		},
+		{
+			"_id": "info.lastError",
+			"type": "state",
+			"common": {
+				"name": {
+					"en": "Last error",
+					"de": "Letzter Fehler"
+				},
+				"type": "string",
+				"role": "text",
+				"read": true,
+				"write": false,
+				"def": ""
+			},
+			"native": {}
+		}
+	]
+}
