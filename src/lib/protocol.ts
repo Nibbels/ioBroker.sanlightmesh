@@ -3,14 +3,18 @@ export const COMMAND_TTL_MIN = 1;
 export const COMMAND_TTL_MAX = 300;
 export const SET_MAX_MIN = 20;
 export const SET_MAX_MAX = 100;
+export const CLOCK_SECONDS_MIN = 0;
+export const CLOCK_SECONDS_MAX = 86_399;
 
 const GATEWAY_ID_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const NODE_ADDRESS_RE = /^[0-9A-F]{4}$/;
 const COMMAND_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const LAMP_CLOCK_RE = /^\d{2}:\d{2}:\d{2}\.\d{3}$/;
+const LAMP_CLOCK_RE = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
+const CLOCK_TARGET_RE = /^(?:([01]\d|2[0-3])):([0-5]\d)(?::([0-5]\d))?$/;
 
 export type NodeTarget = string | 'all';
-export type GatewayAction = 'refresh' | 'set-max' | 'blackout' | 'restore-blackout';
+export type GatewayAction =
+	'refresh' | 'set-max' | 'blackout' | 'restore-blackout' | 'sync-clock' | 'set-clock' | 'refresh-gateway-info';
 
 export interface GatewayNode {
 	address: string;
@@ -30,6 +34,8 @@ export interface GatewayInfo {
 	sequenceRemainingPercent?: number;
 	sequenceStatus?: 'ok' | 'warning' | 'critical';
 	sequenceWarning?: string;
+	localClockSeconds: number;
+	localClock: string;
 	timestamp: string;
 	writePolicy?: Record<string, unknown>;
 }
@@ -57,7 +63,7 @@ export interface NodeState {
 	verifiedAt: string;
 	cached?: boolean;
 	liveVerified: boolean;
-	lampTimeMs?: number;
+	lampClockSeconds?: number;
 	lampClock?: string;
 	liveBrightnessRaw?: number;
 	liveBrightnessPercentEstimate?: number;
@@ -73,6 +79,7 @@ export interface GatewayResult {
 	action?: GatewayAction;
 	target?: string;
 	requested?: number;
+	requestedSecondsSinceMidnight?: number;
 	details?: Record<string, unknown>;
 	timestamp: string;
 }
@@ -112,7 +119,39 @@ export interface RestoreBlackoutCommand {
 	ttlSeconds: number;
 }
 
-export type GatewayCommand = RefreshCommand | SetMaxCommand | BlackoutCommand | RestoreBlackoutCommand;
+export interface SyncClockCommand {
+	id: string;
+	action: 'sync-clock';
+	target: string;
+	createdAt: string;
+	ttlSeconds: number;
+}
+
+export interface SetClockCommand {
+	id: string;
+	action: 'set-clock';
+	target: string;
+	secondsSinceMidnight: number;
+	createdAt: string;
+	ttlSeconds: number;
+}
+
+export interface RefreshGatewayInfoCommand {
+	id: string;
+	action: 'refresh-gateway-info';
+	target: 'gateway';
+	createdAt: string;
+	ttlSeconds: number;
+}
+
+export type GatewayCommand =
+	| RefreshCommand
+	| SetMaxCommand
+	| BlackoutCommand
+	| RestoreBlackoutCommand
+	| SyncClockCommand
+	| SetClockCommand
+	| RefreshGatewayInfoCommand;
 
 export interface GatewayTopics {
 	root: string;
@@ -215,14 +254,30 @@ function requireProtocolVersion(document: Record<string, unknown>): 1 {
 	return PROTOCOL_VERSION;
 }
 
-function formatLampClock(milliseconds: number): string {
-	const dayMilliseconds = milliseconds % 86_400_000;
-	const totalSeconds = Math.floor(dayMilliseconds / 1000);
-	const millis = dayMilliseconds % 1000;
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.floor((totalSeconds % 3600) / 60);
-	const seconds = totalSeconds % 60;
-	return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+export function normalizeClockSeconds(value: unknown, label = 'secondsSinceMidnight'): number {
+	return requireInteger(value, label, CLOCK_SECONDS_MIN, CLOCK_SECONDS_MAX);
+}
+
+export function formatClockSeconds(value: number): string {
+	const secondsSinceMidnight = normalizeClockSeconds(value);
+	const hours = Math.floor(secondsSinceMidnight / 3600);
+	const minutes = Math.floor((secondsSinceMidnight % 3600) / 60);
+	const seconds = secondsSinceMidnight % 60;
+	return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+export function parseClockTarget(value: unknown): number {
+	if (typeof value !== 'string') {
+		throw new ProtocolError('clockTargetTime must be HH:MM or HH:MM:SS');
+	}
+	const match = CLOCK_TARGET_RE.exec(value.trim());
+	if (!match) {
+		throw new ProtocolError('clockTargetTime must be HH:MM or HH:MM:SS; 24:00 is not valid');
+	}
+	const hours = Number(match[1]);
+	const minutes = Number(match[2]);
+	const seconds = match[3] === undefined ? 0 : Number(match[3]);
+	return hours * 3600 + minutes * 60 + seconds;
 }
 
 export function normalizeGatewayId(value: string): string {
@@ -251,6 +306,10 @@ export function normalizeAddress(value: string): string {
 		throw new ProtocolError('node address must be a Bluetooth Mesh unicast address');
 	}
 	return normalized;
+}
+
+function normalizeNodeTarget(value: string): string {
+	return value === 'all' ? 'all' : normalizeAddress(value);
 }
 
 export function validateCommandId(value: string): string {
@@ -282,13 +341,11 @@ export function parseTopic(root: string, topic: string): ParsedTopic | undefined
 	const relative = topic.slice(root.length + 1);
 	if (relative === 'availability') return { kind: 'availability' };
 	if (relative === 'gateway/info') return { kind: 'gatewayInfo' };
-
 	const nodeMatch = /^nodes\/([0-9A-Fa-f]{4})\/(meta|state)$/.exec(relative);
 	if (nodeMatch?.[1] && nodeMatch[2]) {
 		const address = normalizeAddress(nodeMatch[1]);
 		return nodeMatch[2] === 'meta' ? { kind: 'nodeMeta', address } : { kind: 'nodeState', address };
 	}
-
 	const resultMatch = /^result\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/.exec(relative);
 	if (resultMatch?.[1]) return { kind: 'result', commandId: resultMatch[1] };
 	return undefined;
@@ -308,23 +365,28 @@ export function parseGatewayInfo(payload: Buffer | string, expectedGatewayId: st
 		throw new ProtocolError(`gatewayId mismatch: expected ${expectedGatewayId}, received ${gatewayId}`);
 	}
 	if (!Array.isArray(document.nodes)) throw new ProtocolError('nodes must be an array');
-
 	const seen = new Set<string>();
 	const nodes = document.nodes.map((entry, index): GatewayNode => {
 		if (!isRecord(entry)) throw new ProtocolError(`nodes[${index}] must be an object`);
 		const address = normalizeAddress(requireString(entry.address, `nodes[${index}].address`));
 		if (seen.has(address)) throw new ProtocolError(`duplicate node address ${address}`);
 		seen.add(address);
-		return { address, name: requireString(entry.name, `nodes[${index}].name`, true) };
+		return {
+			address,
+			name: requireString(entry.name, `nodes[${index}].name`, true),
+		};
 	});
-
 	const sequenceStatus = document.sequenceStatus;
 	if (sequenceStatus !== undefined && !['ok', 'warning', 'critical'].includes(String(sequenceStatus))) {
 		throw new ProtocolError('sequenceStatus must be ok, warning or critical');
 	}
 	const writePolicy = document.writePolicy;
 	if (writePolicy !== undefined && !isRecord(writePolicy)) throw new ProtocolError('writePolicy must be an object');
-
+	const localClockSeconds = normalizeClockSeconds(document.localClockSeconds, 'localClockSeconds');
+	const localClock = requireString(document.localClock, 'localClock');
+	if (!LAMP_CLOCK_RE.test(localClock) || localClock !== formatClockSeconds(localClockSeconds)) {
+		throw new ProtocolError('localClock must match localClockSeconds as HH:MM:SS');
+	}
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		serviceVersion: requireString(document.serviceVersion, 'serviceVersion'),
@@ -345,6 +407,8 @@ export function parseGatewayInfo(payload: Buffer | string, expectedGatewayId: st
 			document.sequenceWarning === undefined
 				? undefined
 				: requireString(document.sequenceWarning, 'sequenceWarning', true),
+		localClockSeconds,
+		localClock,
 		timestamp: requireTimestamp(document.timestamp, 'timestamp'),
 		writePolicy: writePolicy as Record<string, unknown> | undefined,
 	};
@@ -357,7 +421,6 @@ export function parseNodeMeta(payload: Buffer | string, expectedAddress: string)
 	if (address !== normalizeAddress(expectedAddress)) {
 		throw new ProtocolError(`node metadata address mismatch: topic ${expectedAddress}, payload ${address}`);
 	}
-
 	let writable: NodeMeta['writable'];
 	if (document.writable !== undefined) {
 		if (!isRecord(document.writable)) throw new ProtocolError('writable must be an object');
@@ -372,7 +435,6 @@ export function parseNodeMeta(payload: Buffer | string, expectedAddress: string)
 			};
 		}
 	}
-
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		address,
@@ -390,33 +452,29 @@ export function parseNodeState(payload: Buffer | string, expectedAddress: string
 		throw new ProtocolError(`node state address mismatch: topic ${expectedAddress}, payload ${address}`);
 	}
 	if (document.verified !== true) throw new ProtocolError('node state must be verified=true');
-
 	const maxBrightness = requireInteger(document.maxBrightness, 'maxBrightness', 0, 100);
 	const off = requireBoolean(document.off, 'off');
 	if (off !== (maxBrightness === 0)) throw new ProtocolError('off must be true exactly when maxBrightness is 0');
-
 	const liveVerified =
 		document.liveVerified === undefined ? false : requireBoolean(document.liveVerified, 'liveVerified');
 	const liveFieldNames = [
-		'lampTimeMs',
+		'lampClockSeconds',
 		'lampClock',
 		'liveBrightnessRaw',
 		'liveBrightnessPercentEstimate',
 		'liveVerifiedAt',
 	] as const;
 	const hasAnyLiveField = liveFieldNames.some((name) => document[name] !== undefined);
-
-	let lampTimeMs: number | undefined;
+	let lampClockSeconds: number | undefined;
 	let lampClock: string | undefined;
 	let liveBrightnessRaw: number | undefined;
 	let liveBrightnessPercentEstimate: number | undefined;
 	let liveVerifiedAt: string | undefined;
-
 	if (liveVerified) {
-		lampTimeMs = requireInteger(document.lampTimeMs, 'lampTimeMs', 0, 0xffffffff);
+		lampClockSeconds = normalizeClockSeconds(document.lampClockSeconds, 'lampClockSeconds');
 		lampClock = requireString(document.lampClock, 'lampClock');
-		if (!LAMP_CLOCK_RE.test(lampClock) || lampClock !== formatLampClock(lampTimeMs)) {
-			throw new ProtocolError('lampClock must match lampTimeMs as HH:MM:SS.mmm');
+		if (!LAMP_CLOCK_RE.test(lampClock) || lampClock !== formatClockSeconds(lampClockSeconds)) {
+			throw new ProtocolError('lampClock must match lampClockSeconds as HH:MM:SS');
 		}
 		liveBrightnessRaw = requireInteger(document.liveBrightnessRaw, 'liveBrightnessRaw', 0, 0xffff);
 		liveBrightnessPercentEstimate = requireFiniteNumber(
@@ -430,9 +488,8 @@ export function parseNodeState(payload: Buffer | string, expectedAddress: string
 		}
 		liveVerifiedAt = requireTimestamp(document.liveVerifiedAt, 'liveVerifiedAt');
 	} else if (hasAnyLiveField) {
-		throw new ProtocolError('live brightness fields require liveVerified=true');
+		throw new ProtocolError('live lamp fields require liveVerified=true');
 	}
-
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		address,
@@ -443,7 +500,7 @@ export function parseNodeState(payload: Buffer | string, expectedAddress: string
 		verifiedAt: requireTimestamp(document.verifiedAt, 'verifiedAt'),
 		cached: document.cached === undefined ? undefined : requireBoolean(document.cached, 'cached'),
 		liveVerified,
-		lampTimeMs,
+		lampClockSeconds,
 		lampClock,
 		liveBrightnessRaw,
 		liveBrightnessPercentEstimate,
@@ -458,11 +515,20 @@ export function parseGatewayResult(payload: Buffer | string, expectedCommandId: 
 	if (id !== validateCommandId(expectedCommandId)) {
 		throw new ProtocolError(`result id mismatch: topic ${expectedCommandId}, payload ${id}`);
 	}
-
 	let action: GatewayAction | undefined;
 	if (document.action !== undefined) {
 		const value = requireString(document.action, 'action');
-		if (!['refresh', 'set-max', 'blackout', 'restore-blackout'].includes(value)) {
+		if (
+			![
+				'refresh',
+				'set-max',
+				'blackout',
+				'restore-blackout',
+				'sync-clock',
+				'set-clock',
+				'refresh-gateway-info',
+			].includes(value)
+		) {
 			throw new ProtocolError(`unsupported result action ${value}`);
 		}
 		action = value as GatewayAction;
@@ -470,7 +536,6 @@ export function parseGatewayResult(payload: Buffer | string, expectedCommandId: 
 	if (document.details !== undefined && !isRecord(document.details)) {
 		throw new ProtocolError('details must be an object');
 	}
-
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		id,
@@ -480,12 +545,18 @@ export function parseGatewayResult(payload: Buffer | string, expectedCommandId: 
 		action,
 		target: document.target === undefined ? undefined : requireString(document.target, 'target'),
 		requested: optionalInteger(document.requested, 'requested'),
+		requestedSecondsSinceMidnight: optionalInteger(
+			document.requestedSecondsSinceMidnight,
+			'requestedSecondsSinceMidnight',
+			CLOCK_SECONDS_MIN,
+			CLOCK_SECONDS_MAX,
+		),
 		details: document.details as Record<string, unknown> | undefined,
 		timestamp: requireTimestamp(document.timestamp, 'timestamp'),
 	};
 }
 
-type CommonCommandFields = Pick<GatewayCommand, 'id' | 'createdAt' | 'ttlSeconds'>;
+type CommonCommandFields = Pick<RefreshCommand, 'id' | 'createdAt' | 'ttlSeconds'>;
 
 function commonCommand(id: string, ttlSeconds: number, now: Date): CommonCommandFields {
 	if (Number.isNaN(now.getTime())) throw new ProtocolError('command date is invalid');
@@ -497,8 +568,11 @@ function commonCommand(id: string, ttlSeconds: number, now: Date): CommonCommand
 }
 
 export function createRefreshCommand(id: string, target: string, ttlSeconds: number, now = new Date()): RefreshCommand {
-	const normalizedTarget = target === 'all' ? 'all' : normalizeAddress(target);
-	return { ...commonCommand(id, ttlSeconds, now), action: 'refresh', target: normalizedTarget };
+	return {
+		...commonCommand(id, ttlSeconds, now),
+		action: 'refresh',
+		target: normalizeNodeTarget(target),
+	};
 }
 
 export function createSetMaxCommand(
@@ -522,11 +596,10 @@ export function createBlackoutCommand(
 	ttlSeconds: number,
 	now = new Date(),
 ): BlackoutCommand {
-	const normalizedTarget = target === 'all' ? 'all' : normalizeAddress(target);
 	return {
 		...commonCommand(id, ttlSeconds, now),
 		action: 'blackout',
-		target: normalizedTarget,
+		target: normalizeNodeTarget(target),
 		confirmed: true,
 	};
 }
@@ -537,5 +610,45 @@ export function createRestoreBlackoutCommand(id: string, ttlSeconds: number, now
 		action: 'restore-blackout',
 		target: 'latest',
 		confirmed: true,
+	};
+}
+
+export function createSyncClockCommand(
+	id: string,
+	target: string,
+	ttlSeconds: number,
+	now = new Date(),
+): SyncClockCommand {
+	return {
+		...commonCommand(id, ttlSeconds, now),
+		action: 'sync-clock',
+		target: normalizeNodeTarget(target),
+	};
+}
+
+export function createSetClockCommand(
+	id: string,
+	target: string,
+	secondsSinceMidnight: number,
+	ttlSeconds: number,
+	now = new Date(),
+): SetClockCommand {
+	return {
+		...commonCommand(id, ttlSeconds, now),
+		action: 'set-clock',
+		target: normalizeNodeTarget(target),
+		secondsSinceMidnight: normalizeClockSeconds(secondsSinceMidnight),
+	};
+}
+
+export function createRefreshGatewayInfoCommand(
+	id: string,
+	ttlSeconds: number,
+	now = new Date(),
+): RefreshGatewayInfoCommand {
+	return {
+		...commonCommand(id, ttlSeconds, now),
+		action: 'refresh-gateway-info',
+		target: 'gateway',
 	};
 }

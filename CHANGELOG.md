@@ -6,7 +6,17 @@ explicitly.
 
 ## Unreleased
 
-No changes yet.
+- Hardware-validate the current effective brightness scale against the SANlight app: `33.4%` in ioBroker is shown as the rounded value `34%` in the app.
+- Stop exposing the low-level raw brightness value as an ioBroker object, automatically remove the former `state.liveBrightnessRaw` object, and retain the raw field internally for MQTT API v1 validation and compatibility.
+- Add explicit per-lamp and all-lamp clock synchronization and arbitrary clock
+  targets with paired seconds and `HH:MM:SS` inputs.
+- Add a gateway-local clock snapshot and a no-Mesh `refreshInfo` control.
+- Replace `state.lampTimeMs` with whole-second `state.lampClockSeconds`, keep
+  `state.lampClock` at `HH:MM:SS`, and automatically remove the obsolete object.
+- Keep clock values snapshot-based and require an explicit sync or apply action
+  for every clock write; do not add periodic lamp polling.
+- Accept additive `sync-clock`, `set-clock` and `refresh-gateway-info` commands
+  within pre-stable MQTT API v1.
 
 ## 0.2.0 - 2026-07-17
 
@@ -19,11 +29,6 @@ No changes yet.
 - Add read-only ioBroker states for lamp time, current effective brightness with
   one-decimal resolution, validity and verification timestamp; keep them
   explicitly separate from configured MaxBrightness.
-- Hardware-validate the current effective brightness scale against the SANlight
-  app: `33.4%` in ioBroker is shown as the rounded value `34%` in the app.
-- Stop exposing the low-level raw brightness value as an ioBroker object,
-  automatically remove the former `state.liveBrightnessRaw` object, and retain
-  the raw field internally for MQTT API v1 validation and compatibility.
 - Explicitly set `i18n: false` in the Admin JSON configuration because the
   current panel embeds its English labels directly and does not use external
   translation files; add a package validation guard for this schema

@@ -111,6 +111,22 @@ compatibility, but the adapter intentionally does not expose it as a separate
 ioBroker state. The percentage remains an output indicator, not calibrated
 watts, photon flux or PPFD.
 
+## Lamp clocks
+
+The adapter exposes the last observed lamp clock as whole seconds since midnight
+and as `HH:MM:SS`. These are snapshots from an explicit lamp read or verified
+write; they do not tick inside ioBroker.
+
+Each lamp can either be synchronized to the gateway Raspberry Pi's current local
+time with `control.syncClockNow`, or set to an arbitrary wall/virtual time through
+`control.clockTargetSeconds` or `control.clockTargetTime` followed by
+`control.applyClockTarget`. The all-lamp equivalents are below
+`gateway.control`. Editing either target input does not write to Bluetooth Mesh.
+
+`gateway.control.refreshInfo` refreshes the gateway's local-clock reference
+without reading any lamp or consuming a Bluetooth Mesh sequence number. Lamp
+clocks change only after an explicit sync or apply action.
+
 ## Multiple gateways
 
 One adapter instance manages exactly one gateway ID and broker connection. Create another instance for another independent gateway Pi.
@@ -128,9 +144,7 @@ One adapter instance manages exactly one gateway ID and broker connection. Creat
 
 The documented topology was validated end to end on real Raspberry Pi hardware
 on 2026-07-16 and 2026-07-17, including adapter startup, MQTT API v1 compatibility, object
-creation, read-only refresh and reversible brightness writes. Version `0.2.0`
-is prepared as the first public GitHub release. It remains a pre-1.0 community
-adapter.
+creation, read-only refresh and reversible brightness writes. Version `0.2.0` is the immutable released baseline. Clock control is being developed for `0.3.0`; the adapter remains pre-1.0.
 
 ## Documentation
 

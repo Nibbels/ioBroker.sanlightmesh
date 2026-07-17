@@ -10,18 +10,26 @@ import mqtt from 'mqtt';
 import type { IClientOptions, MqttClient } from 'mqtt';
 
 import {
+	CLOCK_SECONDS_MAX,
+	CLOCK_SECONDS_MIN,
 	PROTOCOL_VERSION,
 	assertSafeRetainFlag,
 	ProtocolError,
 	createBlackoutCommand,
 	createRefreshCommand,
+	createRefreshGatewayInfoCommand,
 	createRestoreBlackoutCommand,
+	createSetClockCommand,
 	createSetMaxCommand,
+	createSyncClockCommand,
 	createTopics,
+	formatClockSeconds,
 	normalizeAddress,
+	normalizeClockSeconds,
 	normalizeGatewayId,
 	normalizeTopicPrefix,
 	normalizeTtl,
+	parseClockTarget,
 	parseGatewayInfo,
 	parseGatewayResult,
 	parseNodeMeta,
@@ -182,6 +190,27 @@ class Sanlightmesh extends utils.Adapter {
 				this.stateCommon('Sequence warning', 'Sequence-Warnung', 'string', 'text', false, ''),
 			],
 			[
+				'gateway.info.localClockSeconds',
+				{
+					...this.stateCommon(
+						'Gateway local clock in seconds since midnight',
+						'Lokale Gateway-Uhr in Sekunden seit Mitternacht',
+						'number',
+						'value.time',
+						false,
+						0,
+						's',
+					),
+					min: CLOCK_SECONDS_MIN,
+					max: CLOCK_SECONDS_MAX,
+					step: 1,
+				},
+			],
+			[
+				'gateway.info.localClock',
+				this.stateCommon('Gateway local clock', 'Lokale Gateway-Uhr', 'string', 'text', false, ''),
+			],
+			[
 				'gateway.info.lastSeen',
 				this.stateCommon(
 					'Gateway info timestamp',
@@ -195,6 +224,67 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'gateway.control.refreshAll',
 				this.stateCommon('Refresh all lamps', 'Alle Lampen aktualisieren', 'boolean', 'button', true, false),
+			],
+			[
+				'gateway.control.refreshInfo',
+				this.stateCommon(
+					'Refresh gateway information',
+					'Gateway-Informationen aktualisieren',
+					'boolean',
+					'button',
+					true,
+					false,
+				),
+			],
+			[
+				'gateway.control.syncAllClocksNow',
+				this.stateCommon(
+					'Synchronize all lamp clocks now',
+					'Alle Lampenuhren jetzt synchronisieren',
+					'boolean',
+					'button',
+					true,
+					false,
+				),
+			],
+			[
+				'gateway.control.clockTargetSeconds',
+				{
+					...this.stateCommon(
+						'Clock target in seconds since midnight',
+						'Ziel-Uhrzeit in Sekunden seit Mitternacht',
+						'number',
+						'value.time',
+						true,
+						0,
+						's',
+					),
+					min: CLOCK_SECONDS_MIN,
+					max: CLOCK_SECONDS_MAX,
+					step: 1,
+				},
+			],
+			[
+				'gateway.control.clockTargetTime',
+				this.stateCommon(
+					'Clock target (HH:MM or HH:MM:SS)',
+					'Ziel-Uhrzeit (HH:MM oder HH:MM:SS)',
+					'string',
+					'text',
+					true,
+					'00:00:00',
+				),
+			],
+			[
+				'gateway.control.applyClockTargetToAll',
+				this.stateCommon(
+					'Apply clock target to all lamps',
+					'Ziel-Uhrzeit auf alle Lampen anwenden',
+					'boolean',
+					'button',
+					true,
+					false,
+				),
 			],
 			[
 				'gateway.control.blackoutAll',
@@ -251,6 +341,7 @@ class Sanlightmesh extends utils.Adapter {
 			],
 		];
 		for (const [id, common] of states) await this.ensureObject(id, { type: 'state', common, native: {} });
+		await this.initializeClockTargetPair('gateway.control');
 	}
 
 	private stateCommon(
@@ -296,7 +387,9 @@ class Sanlightmesh extends utils.Adapter {
 			const relative = id.slice(prefix.length);
 			if (relative.includes('.')) continue;
 			try {
-				this.knownNodes.add(normalizeAddress(relative));
+				const address = normalizeAddress(relative);
+				this.knownNodes.add(address);
+				await this.removeLegacyLampTimeMsObject(address);
 			} catch {
 				this.log.warn(`Ignoring invalid existing lamp object ${id}`);
 			}
@@ -468,6 +561,8 @@ class Sanlightmesh extends utils.Adapter {
 			this.setStateAsync('gateway.info.sequenceRemainingPercent', info.sequenceRemainingPercent ?? 0, true),
 			this.setStateAsync('gateway.info.sequenceStatus', info.sequenceStatus ?? '', true),
 			this.setStateAsync('gateway.info.sequenceWarning', info.sequenceWarning ?? '', true),
+			this.setStateAsync('gateway.info.localClockSeconds', info.localClockSeconds, true),
+			this.setStateAsync('gateway.info.localClock', info.localClock, true),
 			this.setStateAsync('gateway.info.lastSeen', info.timestamp, true),
 		]);
 		const present = new Set<string>();
@@ -522,14 +617,14 @@ class Sanlightmesh extends utils.Adapter {
 		];
 		if (
 			state.liveVerified &&
-			state.lampTimeMs !== undefined &&
+			state.lampClockSeconds !== undefined &&
 			state.lampClock !== undefined &&
 			state.liveBrightnessRaw !== undefined &&
 			state.liveBrightnessPercentEstimate !== undefined &&
 			state.liveVerifiedAt !== undefined
 		) {
 			updates.push(
-				this.setStateAsync(`lamps.${state.address}.state.lampTimeMs`, state.lampTimeMs, true),
+				this.setStateAsync(`lamps.${state.address}.state.lampClockSeconds`, state.lampClockSeconds, true),
 				this.setStateAsync(`lamps.${state.address}.state.lampClock`, state.lampClock, true),
 				this.setStateAsync(
 					`lamps.${state.address}.state.liveBrightnessPercentEstimate`,
@@ -547,6 +642,7 @@ class Sanlightmesh extends utils.Adapter {
 	}
 
 	private async handleResult(result: GatewayResult): Promise<void> {
+		await this.applyLiveReportedResult(result);
 		const pending = this.pendingCommands.get(result.id);
 		if (pending) {
 			clearTimeout(pending.timeout);
@@ -560,14 +656,85 @@ class Sanlightmesh extends utils.Adapter {
 			if (address && !this.knownNodes.has(address)) await this.ensureLamp(address, `SANlight ${address}`);
 		}
 		if (statusBase) await this.writeCommandStatus(statusBase, result, false);
+		await this.applyPerLampClockResults(result);
 		await this.setStateAsync('commands.pending', this.pendingCommands.size > 0, true);
 		if (!result.ok) await this.setStateAsync('commands.lastError', result.message, true);
+	}
+
+	private async applyLiveReportedResult(result: GatewayResult): Promise<void> {
+		const liveReported = result.details?.liveReported;
+		if (!liveReported || typeof liveReported !== 'object' || Array.isArray(liveReported)) return;
+
+		for (const [rawAddress, value] of Object.entries(liveReported)) {
+			if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+			try {
+				const address = normalizeAddress(rawAddress);
+				if (!this.knownNodes.has(address)) await this.ensureLamp(address, `SANlight ${address}`);
+				const report = value as Record<string, unknown>;
+				const seconds = normalizeClockSeconds(report.lampClockSeconds, 'lampClockSeconds');
+				if (report.lampClock !== formatClockSeconds(seconds)) {
+					throw new ProtocolError('lampClock does not match lampClockSeconds');
+				}
+				if (
+					typeof report.liveBrightnessRaw !== 'number' ||
+					!Number.isInteger(report.liveBrightnessRaw) ||
+					report.liveBrightnessRaw < 0 ||
+					report.liveBrightnessRaw > 0xffff ||
+					typeof report.liveBrightnessPercentEstimate !== 'number' ||
+					!Number.isFinite(report.liveBrightnessPercentEstimate) ||
+					Math.abs(report.liveBrightnessPercentEstimate - report.liveBrightnessRaw / 10) > 0.000001
+				) {
+					throw new ProtocolError('live brightness result is inconsistent');
+				}
+				await Promise.all([
+					this.setStateAsync(`lamps.${address}.state.lampClockSeconds`, seconds, true),
+					this.setStateAsync(`lamps.${address}.state.lampClock`, report.lampClock, true),
+					this.setStateAsync(
+						`lamps.${address}.state.liveBrightnessPercentEstimate`,
+						report.liveBrightnessPercentEstimate,
+						true,
+					),
+					this.setStateAsync(`lamps.${address}.state.liveVerified`, true, true),
+					this.setStateAsync(`lamps.${address}.state.liveVerifiedAt`, result.timestamp, true),
+					this.setStateAsync(`lamps.${address}.state.available`, true, true),
+				]);
+			} catch (error) {
+				this.log.warn(`Ignored malformed live result for lamp ${rawAddress}: ${(error as Error).message}`);
+			}
+		}
+	}
+
+	private async applyPerLampClockResults(result: GatewayResult): Promise<void> {
+		if (result.target !== 'all' || (result.action !== 'sync-clock' && result.action !== 'set-clock')) return;
+		const nodes = result.details?.nodes;
+		if (!nodes || typeof nodes !== 'object' || Array.isArray(nodes)) return;
+
+		for (const [rawAddress, value] of Object.entries(nodes)) {
+			if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+			try {
+				const address = normalizeAddress(rawAddress);
+				const nodeStatus = (value as Record<string, unknown>).status;
+				if (typeof nodeStatus !== 'string') continue;
+				if (!this.knownNodes.has(address)) await this.ensureLamp(address, `SANlight ${address}`);
+				const nodeResult: GatewayResult = {
+					...result,
+					ok: nodeStatus === 'verified',
+					status: nodeStatus,
+					target: address,
+					message: `Clock command ${nodeStatus} for lamp ${address}.`,
+				};
+				await this.writeCommandStatus(`lamps.${address}.command`, nodeResult, false);
+			} catch (error) {
+				this.log.warn(`Ignored malformed clock result for lamp ${rawAddress}: ${(error as Error).message}`);
+			}
+		}
 	}
 
 	private statusBaseForResult(result: GatewayResult): string | undefined {
 		if (result.target && /^[0-9A-Fa-f]{4}$/.test(result.target))
 			return `lamps.${result.target.toUpperCase()}.command`;
-		if (result.target === 'all' || result.target === 'latest') return 'gateway.command';
+		if (result.target === 'all' || result.target === 'latest' || result.target === 'gateway')
+			return 'gateway.command';
 		return undefined;
 	}
 
@@ -706,23 +873,28 @@ class Sanlightmesh extends utils.Adapter {
 				),
 			],
 			[
-				'state.lampTimeMs',
-				this.stateCommon(
-					'Lamp time in milliseconds',
-					'Lampenzeit in Millisekunden',
-					'number',
-					'value',
-					false,
-					0,
-					'ms',
-				),
+				'state.lampClockSeconds',
+				{
+					...this.stateCommon(
+						'Lamp clock in seconds since midnight',
+						'Lampenuhr in Sekunden seit Mitternacht',
+						'number',
+						'value.time',
+						false,
+						0,
+						's',
+					),
+					min: CLOCK_SECONDS_MIN,
+					max: CLOCK_SECONDS_MAX,
+					step: 1,
+				},
 			],
 			['state.lampClock', this.stateCommon('Lamp clock', 'Lampenuhr', 'string', 'text', false, '')],
 			[
 				'state.liveVerified',
 				this.stateCommon(
-					'Live brightness verified',
-					'Aktuelle Helligkeit verifiziert',
+					'Live lamp state verified',
+					'Aktueller Lampenzustand verifiziert',
 					'boolean',
 					'indicator',
 					false,
@@ -732,8 +904,8 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'state.liveVerifiedAt',
 				this.stateCommon(
-					'Live brightness timestamp',
-					'Zeitstempel der aktuellen Helligkeit',
+					'Live lamp state timestamp',
+					'Zeitstempel des aktuellen Lampenzustands',
 					'string',
 					'date',
 					false,
@@ -784,6 +956,56 @@ class Sanlightmesh extends utils.Adapter {
 				this.stateCommon('Refresh lamp', 'Lampe aktualisieren', 'boolean', 'button', true, false),
 			],
 			[
+				'control.syncClockNow',
+				this.stateCommon(
+					'Synchronize lamp clock now',
+					'Lampenuhr jetzt synchronisieren',
+					'boolean',
+					'button',
+					true,
+					false,
+				),
+			],
+			[
+				'control.clockTargetSeconds',
+				{
+					...this.stateCommon(
+						'Clock target in seconds since midnight',
+						'Ziel-Uhrzeit in Sekunden seit Mitternacht',
+						'number',
+						'value.time',
+						true,
+						0,
+						's',
+					),
+					min: CLOCK_SECONDS_MIN,
+					max: CLOCK_SECONDS_MAX,
+					step: 1,
+				},
+			],
+			[
+				'control.clockTargetTime',
+				this.stateCommon(
+					'Clock target (HH:MM or HH:MM:SS)',
+					'Ziel-Uhrzeit (HH:MM oder HH:MM:SS)',
+					'string',
+					'text',
+					true,
+					'00:00:00',
+				),
+			],
+			[
+				'control.applyClockTarget',
+				this.stateCommon(
+					'Apply lamp clock target',
+					'Ziel-Uhrzeit auf Lampe anwenden',
+					'boolean',
+					'button',
+					true,
+					false,
+				),
+			],
+			[
 				'control.blackout',
 				this.stateCommon('Explicit blackout', 'Expliziter Blackout', 'boolean', 'button', true, false),
 			],
@@ -817,17 +1039,40 @@ class Sanlightmesh extends utils.Adapter {
 				native: {},
 			});
 		}
-		await this.extendObjectAsync(`lamps.${normalized}.state.liveBrightnessPercentEstimate`, {
-			common: this.stateCommon(
-				'Current effective brightness',
-				'Aktuelle effektive Helligkeit',
-				'number',
-				'value.brightness',
-				false,
-				0,
-				'%',
-			),
-		});
+		await Promise.all([
+			this.extendObjectAsync(`lamps.${normalized}.state.liveBrightnessPercentEstimate`, {
+				common: this.stateCommon(
+					'Current effective brightness',
+					'Aktuelle effektive Helligkeit',
+					'number',
+					'value.brightness',
+					false,
+					0,
+					'%',
+				),
+			}),
+			this.extendObjectAsync(`lamps.${normalized}.state.liveVerified`, {
+				common: this.stateCommon(
+					'Live lamp state verified',
+					'Aktueller Lampenzustand verifiziert',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			}),
+			this.extendObjectAsync(`lamps.${normalized}.state.liveVerifiedAt`, {
+				common: this.stateCommon(
+					'Live lamp state timestamp',
+					'Zeitstempel des aktuellen Lampenzustands',
+					'string',
+					'date',
+					false,
+					'',
+				),
+			}),
+		]);
+		await this.initializeClockTargetPair(`lamps.${normalized}.control`);
 		if (isNew) {
 			await Promise.all([
 				this.setStateAsync(`lamps.${normalized}.info.address`, normalized, true),
@@ -839,6 +1084,17 @@ class Sanlightmesh extends utils.Adapter {
 
 	private async removeLegacyLiveBrightnessRawObject(address: string): Promise<void> {
 		const id = `lamps.${address}.state.liveBrightnessRaw`;
+		try {
+			if (!(await this.getObjectAsync(id))) return;
+			await this.delObjectAsync(id);
+			this.log.debug(`Removed deprecated ioBroker state ${id}`);
+		} catch (error) {
+			this.log.warn(`Could not remove deprecated ioBroker state ${id}: ${(error as Error).message}`);
+		}
+	}
+
+	private async removeLegacyLampTimeMsObject(address: string): Promise<void> {
+		const id = `lamps.${address}.state.lampTimeMs`;
 		try {
 			if (!(await this.getObjectAsync(id))) return;
 			await this.delObjectAsync(id);
@@ -896,6 +1152,39 @@ class Sanlightmesh extends utils.Adapter {
 				);
 				return;
 			}
+			if (relative === 'gateway.control.refreshInfo') {
+				await this.ackButton(relative);
+				await this.sendCommand(
+					createRefreshGatewayInfoCommand(
+						this.newCommandId('refresh-gateway-info', 'gateway'),
+						this.commandTtl(),
+					),
+				);
+				return;
+			}
+			if (relative === 'gateway.control.syncAllClocksNow') {
+				await this.ackButton(relative);
+				await this.sendCommand(
+					createSyncClockCommand(this.newCommandId('sync-clock', 'all'), 'all', this.commandTtl()),
+				);
+				return;
+			}
+			if (relative === 'gateway.control.clockTargetSeconds') {
+				await this.updateClockTargetFromSeconds('gateway.control', state.val);
+				return;
+			}
+			if (relative === 'gateway.control.clockTargetTime') {
+				await this.updateClockTargetFromText('gateway.control', state.val);
+				return;
+			}
+			if (relative === 'gateway.control.applyClockTargetToAll') {
+				await this.ackButton(relative);
+				const seconds = await this.readClockTargetSeconds('gateway.control');
+				await this.sendCommand(
+					createSetClockCommand(this.newCommandId('set-clock', 'all'), 'all', seconds, this.commandTtl()),
+				);
+				return;
+			}
 			if (relative === 'gateway.control.blackoutAll') {
 				await this.ackButton(relative);
 				this.requireBlackoutEnabled();
@@ -912,7 +1201,10 @@ class Sanlightmesh extends utils.Adapter {
 				);
 				return;
 			}
-			const match = /^lamps\.([0-9A-Fa-f]{4})\.control\.(maxBrightness|refresh|blackout)$/.exec(relative);
+			const match =
+				/^lamps\.([0-9A-Fa-f]{4})\.control\.(maxBrightness|refresh|blackout|syncClockNow|clockTargetSeconds|clockTargetTime|applyClockTarget)$/.exec(
+					relative,
+				);
 			if (!match?.[1] || !match[2]) return;
 			const address = normalizeAddress(match[1]);
 			if (match[2] === 'maxBrightness') {
@@ -924,6 +1216,21 @@ class Sanlightmesh extends utils.Adapter {
 				await this.ackButton(relative);
 				await this.sendCommand(
 					createRefreshCommand(this.newCommandId('refresh', address), address, this.commandTtl()),
+				);
+			} else if (match[2] === 'syncClockNow') {
+				await this.ackButton(relative);
+				await this.sendCommand(
+					createSyncClockCommand(this.newCommandId('sync-clock', address), address, this.commandTtl()),
+				);
+			} else if (match[2] === 'clockTargetSeconds') {
+				await this.updateClockTargetFromSeconds(`lamps.${address}.control`, state.val);
+			} else if (match[2] === 'clockTargetTime') {
+				await this.updateClockTargetFromText(`lamps.${address}.control`, state.val);
+			} else if (match[2] === 'applyClockTarget') {
+				await this.ackButton(relative);
+				const seconds = await this.readClockTargetSeconds(`lamps.${address}.control`);
+				await this.sendCommand(
+					createSetClockCommand(this.newCommandId('set-clock', address), address, seconds, this.commandTtl()),
 				);
 			} else {
 				await this.ackButton(relative);
@@ -947,6 +1254,78 @@ class Sanlightmesh extends utils.Adapter {
 		const value =
 			typeof reported?.val === 'number' && reported.val >= 20 && reported.val <= 100 ? reported.val : 20;
 		await this.setStateAsync(stateId, value, true);
+	}
+
+	private async updateClockTargetFromSeconds(base: string, value: ioBroker.StateValue): Promise<void> {
+		try {
+			const seconds = normalizeClockSeconds(value, 'clockTargetSeconds');
+			await this.writeClockTargetPair(base, seconds);
+		} catch (error) {
+			await this.restoreClockTargetPair(base);
+			throw error;
+		}
+	}
+
+	private async updateClockTargetFromText(base: string, value: ioBroker.StateValue): Promise<void> {
+		try {
+			const seconds = parseClockTarget(value);
+			await this.writeClockTargetPair(base, seconds);
+		} catch (error) {
+			await this.restoreClockTargetPair(base);
+			throw error;
+		}
+	}
+
+	private async writeClockTargetPair(base: string, seconds: number): Promise<void> {
+		await Promise.all([
+			this.setStateAsync(`${base}.clockTargetSeconds`, seconds, true),
+			this.setStateAsync(`${base}.clockTargetTime`, formatClockSeconds(seconds), true),
+		]);
+	}
+
+	private async restoreClockTargetPair(base: string): Promise<void> {
+		const numeric = await this.getStateAsync(`${base}.clockTargetSeconds`);
+		if (
+			typeof numeric?.val === 'number' &&
+			Number.isInteger(numeric.val) &&
+			numeric.val >= CLOCK_SECONDS_MIN &&
+			numeric.val <= CLOCK_SECONDS_MAX
+		) {
+			await this.writeClockTargetPair(base, numeric.val);
+			return;
+		}
+		const text = await this.getStateAsync(`${base}.clockTargetTime`);
+		try {
+			await this.writeClockTargetPair(base, parseClockTarget(text?.val));
+		} catch {
+			await this.writeClockTargetPair(base, 0);
+		}
+	}
+
+	private async readClockTargetSeconds(base: string): Promise<number> {
+		const state = await this.getStateAsync(`${base}.clockTargetSeconds`);
+		return normalizeClockSeconds(state?.val, 'clockTargetSeconds');
+	}
+
+	private async initializeClockTargetPair(base: string): Promise<void> {
+		const numeric = await this.getStateAsync(`${base}.clockTargetSeconds`);
+		if (
+			typeof numeric?.val === 'number' &&
+			Number.isInteger(numeric.val) &&
+			numeric.val >= CLOCK_SECONDS_MIN &&
+			numeric.val <= CLOCK_SECONDS_MAX
+		) {
+			const formatted = formatClockSeconds(numeric.val);
+			const text = await this.getStateAsync(`${base}.clockTargetTime`);
+			if (text?.val !== formatted) await this.writeClockTargetPair(base, numeric.val);
+			return;
+		}
+		const text = await this.getStateAsync(`${base}.clockTargetTime`);
+		try {
+			await this.writeClockTargetPair(base, parseClockTarget(text?.val));
+		} catch {
+			await this.writeClockTargetPair(base, 0);
+		}
 	}
 
 	private scheduleBrightness(address: string, value: number): void {

@@ -14,11 +14,15 @@ One adapter instance owns exactly one configured gateway. Object IDs therefore d
 
 ## Gateway
 
-`gateway.info.*` exposes service version, Mesh UUID, canonical sender address, sequence-number budget and the last gateway-info timestamp.
+`gateway.info.*` exposes service version, Mesh UUID, canonical sender address, sequence-number budget, a local-clock snapshot (`localClockSeconds` and `localClock`) and the gateway-info timestamp. The clock value is a snapshot and does not tick inside ioBroker.
 
 `gateway.control.*` provides:
 
 - `refreshAll`
+- `refreshInfo` — republishes gateway-local information without a Mesh operation
+- `syncAllClocksNow`
+- `clockTargetSeconds` / `clockTargetTime`
+- `applyClockTargetToAll`
 - `blackoutAll`
 - `restoreLatestBlackout`
 
@@ -43,8 +47,8 @@ Verified gateway reports:
 - `verified`
 - `verifiedAt`
 - `liveBrightnessPercentEstimate` — current effective brightness with one decimal place
-- `lampTimeMs`
-- `lampClock`
+- `lampClockSeconds` — observed whole seconds since lamp midnight
+- `lampClock` — observed `HH:MM:SS` snapshot
 - `liveVerified`
 - `liveVerifiedAt`
 - `available`
@@ -53,9 +57,7 @@ Verified gateway reports:
 The live fields are read-only and remain separate from MaxBrightness. The
 percentage was hardware-compared with the SANlight app: `33.4%` in ioBroker
 appears there as the rounded value `34%`. The raw vendor field remains
-transport-internal and is not a separate ioBroker object. Existing
-`state.liveBrightnessRaw` objects from earlier development versions are removed
-automatically.
+transport-internal and is not a separate ioBroker object. Existing `state.liveBrightnessRaw` and `state.lampTimeMs` objects from earlier development versions are removed automatically.
 
 When `liveVerified=false`, the numeric live states retain their last received values
 but must be treated as stale or unavailable. Use `liveVerifiedAt` for age and do
@@ -67,9 +69,12 @@ User-writable targets and buttons:
 
 - `maxBrightness` — normal range `20..100`
 - `refresh`
+- `syncClockNow`
+- `clockTargetSeconds` / `clockTargetTime`
+- `applyClockTarget`
 - `blackout`
 
-The control target is separate from the verified report. A requested value never overwrites `state.maxBrightness` before gateway readback.
+The control target is separate from the verified report. A requested value never overwrites `state.maxBrightness` before gateway readback. Clock targets accept `HH:MM` or `HH:MM:SS`; `24:00` is invalid. Editing a clock target only updates the paired input states. A lamp write occurs only when the explicit apply or sync button is used.
 
 ### `command`
 

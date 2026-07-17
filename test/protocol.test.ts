@@ -32,7 +32,10 @@ test('creates exact per-gateway topics without a broad wildcard', () => {
 
 test('parses only supported topics beneath the configured gateway root', () => {
 	const root = 'sanlightmesh/v1/room-a';
-	assert.deepEqual(parseTopic(root, `${root}/nodes/0003/state`), { kind: 'nodeState', address: '0003' });
+	assert.deepEqual(parseTopic(root, `${root}/nodes/0003/state`), {
+		kind: 'nodeState',
+		address: '0003',
+	});
 	assert.equal(parseTopic(root, 'sanlightmesh/v1/room-b/nodes/0003/state'), undefined);
 	assert.equal(parseTopic(root, `${root}/nodes/0003/private`), undefined);
 });
@@ -69,11 +72,11 @@ test('creates safe commands and keeps blackout explicit', () => {
 	assert.throws(() => createSetMaxCommand('set-zero', '0003', 0, 30, now), ProtocolError);
 });
 
-test('validates gateway identity and topology', () => {
+test('validates gateway identity, topology and local clock snapshot', () => {
 	const info = parseGatewayInfo(
 		JSON.stringify({
 			protocolVersion: 1,
-			serviceVersion: '0.1.1',
+			serviceVersion: '0.2.0',
 			gatewayId: 'room-a',
 			meshUuid: 'mesh-id',
 			senderAddress: '2800',
@@ -81,20 +84,27 @@ test('validates gateway identity and topology', () => {
 				{ address: '0002', name: 'Left' },
 				{ address: '0003', name: 'Right' },
 			],
-			sequenceNumber: 1048672,
-			sequenceRemaining: 15728543,
+			sequenceNumber: 1_048_672,
+			sequenceRemaining: 15_728_543,
 			sequenceRemainingPercent: 93.75,
 			sequenceStatus: 'ok',
+			localClockSeconds: 56_693,
+			localClock: '15:44:53',
 			writePolicy: {},
 			timestamp: '2026-07-15T15:44:53Z',
 		}),
 		'room-a',
 	);
 	assert.equal(info.nodes.length, 2);
+	assert.equal(info.localClockSeconds, 56_693);
 	assert.throws(() => parseGatewayInfo(JSON.stringify({ ...info, gatewayId: 'room-b' }), 'room-a'), /mismatch/);
 	assert.throws(
 		() => parseGatewayInfo(JSON.stringify({ ...info, nodes: [info.nodes[0], info.nodes[0]] }), 'room-a'),
 		/duplicate node address/,
+	);
+	assert.throws(
+		() => parseGatewayInfo(JSON.stringify({ ...info, localClock: '15:44:54' }), 'room-a'),
+		/localClock must match/,
 	);
 });
 
@@ -122,7 +132,7 @@ test('rejects payload addresses that do not match their MQTT topic', () => {
 	assert.throws(() => parseNodeState(JSON.stringify({ ...state, off: true }), '0003'), /off must be true/);
 });
 
-test('parses verified live lamp brightness separately from MaxBrightness', () => {
+test('parses verified live lamp brightness and whole-second clock separately from MaxBrightness', () => {
 	const state = parseNodeState(
 		JSON.stringify({
 			protocolVersion: 1,
@@ -133,8 +143,8 @@ test('parses verified live lamp brightness separately from MaxBrightness', () =>
 			verified: true,
 			verifiedAt: '2026-07-16T20:00:00Z',
 			liveVerified: true,
-			lampTimeMs: 61265168,
-			lampClock: '17:01:05.168',
+			lampClockSeconds: 61_265,
+			lampClock: '17:01:05',
 			liveBrightnessRaw: 461,
 			liveBrightnessPercentEstimate: 46.1,
 			liveVerifiedAt: '2026-07-16T20:00:01Z',
@@ -144,10 +154,11 @@ test('parses verified live lamp brightness separately from MaxBrightness', () =>
 	assert.equal(state.maxBrightness, 68);
 	assert.equal(state.liveBrightnessRaw, 461);
 	assert.equal(state.liveBrightnessPercentEstimate, 46.1);
-	assert.equal(state.lampClock, '17:01:05.168');
+	assert.equal(state.lampClockSeconds, 61_265);
+	assert.equal(state.lampClock, '17:01:05');
 });
 
-test('rejects inconsistent or incomplete live brightness state', () => {
+test('rejects inconsistent or incomplete live lamp state', () => {
 	const base = {
 		protocolVersion: 1,
 		address: '0003',
@@ -157,14 +168,14 @@ test('rejects inconsistent or incomplete live brightness state', () => {
 		verified: true,
 		verifiedAt: '2026-07-16T20:00:00Z',
 		liveVerified: true,
-		lampTimeMs: 61265168,
-		lampClock: '17:01:05.168',
+		lampClockSeconds: 61_265,
+		lampClock: '17:01:05',
 		liveBrightnessRaw: 461,
 		liveBrightnessPercentEstimate: 46.1,
 		liveVerifiedAt: '2026-07-16T20:00:01Z',
 	};
 	assert.throws(
-		() => parseNodeState(JSON.stringify({ ...base, lampClock: '17:01:05.169' }), '0003'),
+		() => parseNodeState(JSON.stringify({ ...base, lampClock: '17:01:06' }), '0003'),
 		/lampClock must match/,
 	);
 	assert.throws(
@@ -173,8 +184,11 @@ test('rejects inconsistent or incomplete live brightness state', () => {
 	);
 	assert.throws(
 		() => parseNodeState(JSON.stringify({ ...base, liveVerified: false }), '0003'),
-		/live brightness fields require/,
+		/live lamp fields require/,
 	);
+	const legacy = { ...base, lampTimeMs: 61_265_168 } as Record<string, unknown>;
+	delete legacy.lampClockSeconds;
+	assert.throws(() => parseNodeState(JSON.stringify(legacy), '0003'), /lampClockSeconds/);
 });
 
 test('requires result topic and payload command IDs to match', () => {

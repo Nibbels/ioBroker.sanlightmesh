@@ -115,6 +115,31 @@ removed automatically when the adapter next discovers the lamp. The raw field
 still travels inside MQTT API v1 and is validated internally, so this cleanup is
 not a protocol break.
 
+## Lamp clock operations
+
+Observed values are snapshots:
+
+```text
+lamps.<address>.state.lampClockSeconds
+lamps.<address>.state.lampClock
+gateway.info.localClockSeconds
+gateway.info.localClock
+```
+
+Use `gateway.control.refreshInfo` for a fresh gateway-local reference without a
+Bluetooth Mesh operation. Use `lamps.<address>.control.refresh` when a fresh lamp
+clock is required; this performs the normal lamp read.
+
+To copy gateway local time to a lamp, trigger `control.syncClockNow`. To set an
+arbitrary real or virtual lamp time, write `clockTargetSeconds` (`0..86399`) or
+`clockTargetTime` (`HH:MM` or `HH:MM:SS`), then trigger the matching apply button.
+`24:00` is rejected. Editing target inputs alone does not write to the lamp.
+
+Clock writes still use gateway queueing, readback and verification. All-lamp
+results can be partial and are reflected in the affected lamp command states.
+The displayed clock values are snapshots. The adapter changes lamp clocks only
+after an explicit sync or apply action.
+
 ## Blackout
 
 Blackout is disabled by default. Enable it only after confirming that the
