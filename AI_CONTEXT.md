@@ -59,9 +59,13 @@ Non-retained command publication:
 Actions:
 
 - `refresh`
+- `read-daylight`
 - `set-max`
 - `blackout`
 - `restore-blackout`
+- `sync-clock`
+- `set-clock`
+- `refresh-gateway-info`
 
 The client uses MQTT 5, a clean session, QoS 1 and exact subscriptions. Result
 payload IDs must match result-topic IDs. Payload node addresses must match topic
@@ -72,14 +76,28 @@ addresses. Gateway information must match the configured gateway ID.
 - `info.*`: transport, availability and API health
 - `gateway.info.*`: gateway identity and sequence health
 - `gateway.control.*`: all-node operations
+- `gateway.daylight.*`: gateway-wide schedule/conflict summary
 - `lamps.<ADDRESS>.info.*`: topology metadata
 - `lamps.<ADDRESS>.state.*`: verified reports
+- `lamps.<ADDRESS>.daylight.*`: parsed profile, analysis validity/error, derived cycle and raw JSON
 - `lamps.<ADDRESS>.control.*`: requested targets/buttons
 - `lamps.<ADDRESS>.command.*`: bounded last command status
 - `commands.*`: bounded instance-wide command status
 
 `info.connection` is true only when MQTT is connected, retained gateway
 availability is online and MQTT API v1 is compatible.
+
+Daylight interpretation belongs in the adapter rather than the gateway. The
+gateway transports and validates the stored profile plus raw bytes. The adapter
+derives light/dark hours, rounded light:dark schema, cultivation-cycle hints,
+fingerprints and gateway-wide conflicts from the actual datapoints. Profile
+names are metadata only and must never drive classification.
+
+Current cycle semantics use one piecewise-linear 24-hour curve. Multiple light
+windows are `custom`; exact all-dark/all-on are explicit; one-window rounded
+10..14 light hours are `flowering`, 16..20 are `vegetative`, and all other
+values are `custom`. These are automation hints. Scripts can use the numeric and
+JSON states for stricter policy.
 
 ## Runtime packaging and compatibility
 

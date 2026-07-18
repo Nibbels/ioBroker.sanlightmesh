@@ -85,6 +85,53 @@ lamps.<address>.state.verified = true
 
 This is the preferred first diagnostic because it does not change brightness.
 
+## Stored daylight-profile reads
+
+Read one lamp without changing its schedule:
+
+```text
+lamps.<address>.control.readDaylight
+```
+
+Read all currently known lamps:
+
+```text
+gateway.control.readAllDaylight
+```
+
+Successful reads end with `lastStatus=verified` and populate
+`lamps.<address>.daylight.*`. Check `daylight.verified`, `analysisValid`,
+`analysisError`, `lastReadOk` and `lastReadAt` before using the schedule in
+automation. A verified raw profile can remain available even when conservative
+adapter analysis rejects an incomplete or unfamiliar 24-hour curve.
+
+The main script-oriented values are:
+
+```text
+daylight.onHours
+daylight.offHours
+daylight.schema
+daylight.cycleType
+daylight.lightWindowCount
+daylight.scheduleFingerprint
+daylight.configurationJson
+```
+
+Classification is derived from the actual datapoints. Do not infer the cycle
+from `profileName`; the SANlight app may display dark:light wording while the
+adapter's `schema` consistently uses light:dark.
+
+`gateway.daylight.conflict` indicates that at least two present lamps have
+different behavioral schedules. `schemaConflict` is narrower and reports only
+different rounded schemas. In installations with multiple intentional grow
+zones, use `gateway.daylight.summaryJson` and group lamp addresses in your own
+script before treating a gateway-wide conflict as an alarm.
+
+The adapter preserves the complete gateway object in `daylight.gatewayJson` and
+the ordered profile in `daylight.configurationJson`. This lets JavaScript and
+TypeScript scripts implement additional validation without depending on raw
+MQTT topics.
+
 ## Brightness writes
 
 `lamps.<address>.control.maxBrightness` accepts only `20..100`.

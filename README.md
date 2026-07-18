@@ -99,6 +99,33 @@ lamps.<address>.command.lastStatus = verified
 Only after this works should you test a small reversible MaxBrightness change in
 the normal `20..100%` range and restore the original value.
 
+## Stored daylight schedules
+
+Use `lamps.<address>.control.readDaylight` to read the schedule stored in one
+lamp, or `gateway.control.readAllDaylight` to read every lamp known to the
+gateway. This is a separate read-only operation and is not added to the normal
+startup or periodic refresh path.
+
+Each lamp receives a native `daylight.*` object tree with:
+
+- profile ID, name and complete datapoint JSON;
+- exact decimal `onHours` and `offHours`;
+- a rounded readable `schema`, such as `12:12`, `18:6`, `24:0` or `0:24`;
+- a cultivation-oriented `cycleType` (`flowering`, `vegetative`, `alwaysOn`,
+  `alwaysDark` or `custom`);
+- stable schedule and complete-configuration fingerprints;
+- verification, freshness, analysis validity/error, parser and raw gateway data.
+
+The adapter derives these values from the datapoints, not from the profile
+name. A hardware-observed SANlight profile named `100% 6:18`, for example,
+contains an 18-hour light window and is exposed as schema `18:6`.
+
+`gateway.daylight.*` summarizes all currently present lamps and raises a
+schedule conflict when their behavioral schedule fingerprints differ. The
+summary is gateway-wide; different rooms or cultivation zones may intentionally
+use different schedules, so automation can use `summaryJson` to group addresses
+according to its own farm model.
+
 ## Current effective brightness
 
 `lamps.<address>.state.liveBrightnessPercentEstimate` reports the lamp's current

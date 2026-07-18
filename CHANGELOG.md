@@ -6,6 +6,18 @@ explicitly.
 
 ## Unreleased
 
+- Add dedicated read-only daylight-profile controls for one lamp and all lamps;
+  normal refresh behavior remains unchanged.
+- Parse and retain the gateway's complete daylight configuration object,
+  including profile metadata, datapoints, parser layout and raw protocol data.
+- Derive script-friendly light and dark hours, rounded `light:dark` schemas,
+  cycle classifications, light-window counts and stable fingerprints from the
+  actual datapoints rather than trusting the profile name.
+- Add gateway-wide schedule, schema and configuration conflict indicators plus
+  a JSON fleet summary for automation and surveillance use.
+- Cover the hardware-observed `12:12`, `18:6` and all-dark profiles, unusual
+  rounded schedules, multiple light windows and metadata-only profile changes.
+
 ## 0.3.0 - 2026-07-18
 
 - Hardware-validate the current effective brightness scale against the SANlight app: `33.4%` in ioBroker is shown as the rounded value `34%` in the app.

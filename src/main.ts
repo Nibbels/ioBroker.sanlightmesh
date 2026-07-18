@@ -16,6 +16,7 @@ import {
 	assertSafeRetainFlag,
 	ProtocolError,
 	createBlackoutCommand,
+	createReadDaylightCommand,
 	createRefreshCommand,
 	createRefreshGatewayInfoCommand,
 	createRestoreBlackoutCommand,
@@ -30,6 +31,7 @@ import {
 	normalizeTopicPrefix,
 	normalizeTtl,
 	parseClockTarget,
+	parseDaylightData,
 	parseGatewayInfo,
 	parseGatewayResult,
 	parseNodeMeta,
@@ -37,6 +39,8 @@ import {
 	parseTopic,
 } from './lib/protocol';
 import type {
+	DaylightData,
+	DaylightState,
 	GatewayAction,
 	GatewayCommand,
 	GatewayInfo,
@@ -45,6 +49,8 @@ import type {
 	NodeMeta,
 	NodeState,
 } from './lib/protocol';
+import { analyzeDaylightConfiguration, buildDaylightFleetSummary } from './lib/daylight';
+import type { DaylightFleetEntry } from './lib/daylight';
 
 interface PendingCommand {
 	id: string;
@@ -70,6 +76,8 @@ class Sanlightmesh extends utils.Adapter {
 	private protocolCompatible = false;
 	private shuttingDown = false;
 	private readonly knownNodes = new Set<string>();
+	private readonly presentNodes = new Set<string>();
+	private readonly daylightByNode = new Map<string, DaylightFleetEntry>();
 	private readonly pendingCommands = new Map<string, PendingCommand>();
 	private readonly brightnessTimers = new Map<string, NodeJS.Timeout>();
 	private readonly brightnessRequests = new Map<string, BrightnessRequest>();
@@ -126,6 +134,11 @@ class Sanlightmesh extends utils.Adapter {
 		await this.ensureObject('gateway.control', {
 			type: 'channel',
 			common: { name: { en: 'Gateway controls', de: 'Gateway-Steuerung' } },
+			native: {},
+		});
+		await this.ensureObject('gateway.daylight', {
+			type: 'channel',
+			common: { name: { en: 'Daylight schedule overview', de: 'Tageslichtplan-Übersicht' } },
 			native: {},
 		});
 		await this.ensureObject('lamps', {
@@ -226,6 +239,17 @@ class Sanlightmesh extends utils.Adapter {
 				this.stateCommon('Refresh all lamps', 'Alle Lampen aktualisieren', 'boolean', 'button', true, false),
 			],
 			[
+				'gateway.control.readAllDaylight',
+				this.stateCommon(
+					'Read daylight schedules from all lamps',
+					'Tageslichtpläne aller Lampen lesen',
+					'boolean',
+					'button',
+					true,
+					false,
+				),
+			],
+			[
 				'gateway.control.refreshInfo',
 				this.stateCommon(
 					'Refresh gateway information',
@@ -302,6 +326,127 @@ class Sanlightmesh extends utils.Adapter {
 				),
 			],
 			[
+				'gateway.daylight.analysisVersion',
+				this.stateCommon(
+					'Daylight analysis version',
+					'Version der Tageslicht-Auswertung',
+					'number',
+					'value',
+					false,
+					1,
+				),
+			],
+			[
+				'gateway.daylight.verifiedLampCount',
+				this.stateCommon(
+					'Verified daylight schedules',
+					'Verifizierte Tageslichtpläne',
+					'number',
+					'value',
+					false,
+					0,
+				),
+			],
+			[
+				'gateway.daylight.distinctConfigurationCount',
+				this.stateCommon(
+					'Distinct daylight configurations',
+					'Unterschiedliche Tageslichtkonfigurationen',
+					'number',
+					'value',
+					false,
+					0,
+				),
+			],
+			[
+				'gateway.daylight.distinctSchemaCount',
+				this.stateCommon(
+					'Distinct daylight schemas',
+					'Unterschiedliche Lichtschemata',
+					'number',
+					'value',
+					false,
+					0,
+				),
+			],
+			[
+				'gateway.daylight.distinctScheduleCount',
+				this.stateCommon(
+					'Distinct daylight schedules',
+					'Unterschiedliche Tageslichtpläne',
+					'number',
+					'value',
+					false,
+					0,
+				),
+			],
+			[
+				'gateway.daylight.conflict',
+				this.stateCommon(
+					'Daylight schedule conflict',
+					'Konflikt zwischen Tageslichtplänen',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
+				'gateway.daylight.configurationConflict',
+				this.stateCommon(
+					'Daylight configuration conflict',
+					'Konflikt zwischen Tageslichtkonfigurationen',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
+				'gateway.daylight.schemaConflict',
+				this.stateCommon(
+					'Daylight schema conflict',
+					'Konflikt zwischen Lichtschemata',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
+				'gateway.daylight.summary',
+				this.stateCommon(
+					'Daylight schedule summary',
+					'Zusammenfassung der Tageslichtpläne',
+					'string',
+					'text',
+					false,
+					'',
+				),
+			],
+			[
+				'gateway.daylight.summaryJson',
+				this.stateCommon(
+					'Daylight schedule summary JSON',
+					'Tageslichtplan-Zusammenfassung als JSON',
+					'string',
+					'json',
+					false,
+					'{}',
+				),
+			],
+			[
+				'gateway.daylight.lastEvaluatedAt',
+				this.stateCommon(
+					'Daylight summary timestamp',
+					'Zeitstempel der Tageslichtplan-Auswertung',
+					'string',
+					'date',
+					false,
+					'',
+				),
+			],
+			[
 				'commands.pending',
 				this.stateCommon('Command pending', 'Befehl ausstehend', 'boolean', 'indicator.working', false, false),
 			],
@@ -346,6 +491,7 @@ class Sanlightmesh extends utils.Adapter {
 			this.extendObjectAsync('gateway.control.clockTargetSeconds', { common: { role: 'level' } }),
 		]);
 		await this.initializeClockTargetPair('gateway.control');
+		await this.updateFleetDaylightSummary();
 	}
 
 	private stateCommon(
@@ -570,8 +716,10 @@ class Sanlightmesh extends utils.Adapter {
 			this.setStateAsync('gateway.info.lastSeen', info.timestamp, true),
 		]);
 		const present = new Set<string>();
+		this.presentNodes.clear();
 		for (const node of info.nodes) {
 			present.add(node.address);
+			this.presentNodes.add(node.address);
 			await this.ensureLamp(node.address, node.name);
 			await this.setStateAsync(`lamps.${node.address}.info.present`, true, true);
 		}
@@ -581,6 +729,7 @@ class Sanlightmesh extends utils.Adapter {
 			await this.setStateAsync(`lamps.${address}.state.available`, false, true);
 			await this.setStateAsync(`lamps.${address}.state.liveVerified`, false, true);
 		}
+		await this.updateFleetDaylightSummary();
 		await this.updateConnectionState();
 	}
 
@@ -603,6 +752,11 @@ class Sanlightmesh extends utils.Adapter {
 			this.setStateAsync(
 				`lamps.${meta.address}.info.maximumBrightness`,
 				meta.writable?.maxBrightness?.maximum ?? 100,
+				true,
+			),
+			this.setStateAsync(
+				`lamps.${meta.address}.info.supportsDaylightRead`,
+				meta.readable?.daylightConfiguration ?? false,
 				true,
 			),
 		]);
@@ -639,14 +793,151 @@ class Sanlightmesh extends utils.Adapter {
 			);
 		}
 		await Promise.all(updates);
+		await this.applyDaylightState(state.address, state.daylightConfiguration);
 		const pendingForNode = [...this.pendingCommands.values()].some((command) => command.target === state.address);
 		if (!pendingForNode && state.maxBrightness >= 20) {
 			await this.setStateAsync(`lamps.${state.address}.control.maxBrightness`, state.maxBrightness, true);
 		}
 	}
 
+	private async applyDaylightState(address: string, daylight: DaylightState | undefined): Promise<void> {
+		const base = `lamps.${address}.daylight`;
+		if (!daylight) {
+			this.daylightByNode.delete(address);
+			await Promise.all([
+				this.setStateAsync(`${base}.verified`, false, true),
+				this.setStateAsync(`${base}.verifiedAt`, '', true),
+				this.setStateAsync(`${base}.lastReadAt`, '', true),
+				this.setStateAsync(`${base}.lastReadOk`, false, true),
+				this.setStateAsync(`${base}.lastError`, '', true),
+				this.setStateAsync(`${base}.analysisVersion`, 1, true),
+				this.setStateAsync(`${base}.analysisValid`, false, true),
+				this.setStateAsync(`${base}.analysisError`, '', true),
+				this.setStateAsync(`${base}.profileId`, 0, true),
+				this.setStateAsync(`${base}.profileName`, '', true),
+				this.setStateAsync(`${base}.valueCount`, 0, true),
+				this.setStateAsync(`${base}.onHours`, 0, true),
+				this.setStateAsync(`${base}.offHours`, 0, true),
+				this.setStateAsync(`${base}.schema`, '', true),
+				this.setStateAsync(`${base}.cycleType`, '', true),
+				this.setStateAsync(`${base}.lightWindowCount`, 0, true),
+				this.setStateAsync(`${base}.configurationFingerprint`, '', true),
+				this.setStateAsync(`${base}.scheduleFingerprint`, '', true),
+				this.setStateAsync(`${base}.configurationJson`, '{}', true),
+				this.setStateAsync(`${base}.valuesJson`, '[]', true),
+				this.setStateAsync(`${base}.parserLayout`, '', true),
+				this.setStateAsync(`${base}.rawPduHex`, '', true),
+				this.setStateAsync(`${base}.rawParametersHex`, '', true),
+				this.setStateAsync(`${base}.gatewayJson`, '{}', true),
+			]);
+			await this.updateFleetDaylightSummary();
+			return;
+		}
+
+		const commonUpdates: Array<Promise<unknown>> = [
+			this.setStateAsync(`${base}.verified`, daylight.verified, true),
+			this.setStateAsync(`${base}.verifiedAt`, daylight.verifiedAt ?? '', true),
+			this.setStateAsync(`${base}.lastReadAt`, daylight.lastReadAt, true),
+			this.setStateAsync(`${base}.lastReadOk`, daylight.lastReadOk, true),
+			this.setStateAsync(`${base}.lastError`, daylight.lastError ?? '', true),
+			this.setStateAsync(`${base}.parserLayout`, daylight.parserLayout ?? '', true),
+			this.setStateAsync(`${base}.rawPduHex`, daylight.rawPduHex ?? '', true),
+			this.setStateAsync(`${base}.rawParametersHex`, daylight.rawParametersHex ?? '', true),
+			this.setStateAsync(`${base}.gatewayJson`, JSON.stringify(daylight), true),
+		];
+
+		if (daylight.verified && daylight.parsed && daylight.configuration && daylight.verifiedAt) {
+			const configuration = daylight.configuration;
+			commonUpdates.push(
+				this.setStateAsync(`${base}.profileId`, configuration.id, true),
+				this.setStateAsync(`${base}.profileName`, configuration.name, true),
+				this.setStateAsync(`${base}.valueCount`, configuration.valueCount, true),
+				this.setStateAsync(`${base}.configurationJson`, JSON.stringify(configuration), true),
+				this.setStateAsync(`${base}.valuesJson`, JSON.stringify(configuration.values), true),
+			);
+			try {
+				const analysis = analyzeDaylightConfiguration(configuration);
+				this.daylightByNode.set(address, {
+					address,
+					profileId: configuration.id,
+					profileName: configuration.name,
+					verifiedAt: daylight.verifiedAt,
+					lastReadOk: daylight.lastReadOk,
+					analysis,
+				});
+				commonUpdates.push(
+					this.setStateAsync(`${base}.analysisVersion`, analysis.analysisVersion, true),
+					this.setStateAsync(`${base}.analysisValid`, true, true),
+					this.setStateAsync(`${base}.analysisError`, '', true),
+					this.setStateAsync(`${base}.onHours`, analysis.onHours, true),
+					this.setStateAsync(`${base}.offHours`, analysis.offHours, true),
+					this.setStateAsync(`${base}.schema`, analysis.schema, true),
+					this.setStateAsync(`${base}.cycleType`, analysis.cycleType, true),
+					this.setStateAsync(`${base}.lightWindowCount`, analysis.lightWindowCount, true),
+					this.setStateAsync(`${base}.configurationFingerprint`, analysis.configurationFingerprint, true),
+					this.setStateAsync(`${base}.scheduleFingerprint`, analysis.scheduleFingerprint, true),
+				);
+			} catch (error) {
+				this.daylightByNode.delete(address);
+				commonUpdates.push(
+					this.setStateAsync(`${base}.analysisVersion`, 1, true),
+					this.setStateAsync(`${base}.analysisValid`, false, true),
+					this.setStateAsync(`${base}.analysisError`, (error as Error).message, true),
+					this.setStateAsync(`${base}.onHours`, 0, true),
+					this.setStateAsync(`${base}.offHours`, 0, true),
+					this.setStateAsync(`${base}.schema`, '', true),
+					this.setStateAsync(`${base}.cycleType`, '', true),
+					this.setStateAsync(`${base}.lightWindowCount`, 0, true),
+					this.setStateAsync(`${base}.configurationFingerprint`, '', true),
+					this.setStateAsync(`${base}.scheduleFingerprint`, '', true),
+				);
+			}
+		} else {
+			this.daylightByNode.delete(address);
+			commonUpdates.push(
+				this.setStateAsync(`${base}.analysisVersion`, 1, true),
+				this.setStateAsync(`${base}.analysisValid`, false, true),
+				this.setStateAsync(`${base}.analysisError`, '', true),
+				this.setStateAsync(`${base}.profileId`, 0, true),
+				this.setStateAsync(`${base}.profileName`, '', true),
+				this.setStateAsync(`${base}.valueCount`, 0, true),
+				this.setStateAsync(`${base}.configurationJson`, '{}', true),
+				this.setStateAsync(`${base}.valuesJson`, '[]', true),
+				this.setStateAsync(`${base}.onHours`, 0, true),
+				this.setStateAsync(`${base}.offHours`, 0, true),
+				this.setStateAsync(`${base}.schema`, '', true),
+				this.setStateAsync(`${base}.cycleType`, '', true),
+				this.setStateAsync(`${base}.lightWindowCount`, 0, true),
+				this.setStateAsync(`${base}.configurationFingerprint`, '', true),
+				this.setStateAsync(`${base}.scheduleFingerprint`, '', true),
+			);
+		}
+
+		await Promise.all(commonUpdates);
+		await this.updateFleetDaylightSummary();
+	}
+
+	private async updateFleetDaylightSummary(): Promise<void> {
+		const entries = [...this.daylightByNode.values()].filter((entry) => this.presentNodes.has(entry.address));
+		const summary = buildDaylightFleetSummary(entries);
+		await Promise.all([
+			this.setStateAsync('gateway.daylight.analysisVersion', summary.analysisVersion, true),
+			this.setStateAsync('gateway.daylight.verifiedLampCount', summary.verifiedLampCount, true),
+			this.setStateAsync('gateway.daylight.distinctScheduleCount', summary.distinctScheduleCount, true),
+			this.setStateAsync('gateway.daylight.distinctConfigurationCount', summary.distinctConfigurationCount, true),
+			this.setStateAsync('gateway.daylight.distinctSchemaCount', summary.distinctSchemaCount, true),
+			this.setStateAsync('gateway.daylight.conflict', summary.conflict, true),
+			this.setStateAsync('gateway.daylight.configurationConflict', summary.configurationConflict, true),
+			this.setStateAsync('gateway.daylight.schemaConflict', summary.schemaConflict, true),
+			this.setStateAsync('gateway.daylight.summary', summary.summary, true),
+			this.setStateAsync('gateway.daylight.summaryJson', JSON.stringify(summary), true),
+			this.setStateAsync('gateway.daylight.lastEvaluatedAt', new Date().toISOString(), true),
+		]);
+	}
+
 	private async handleResult(result: GatewayResult): Promise<void> {
 		await this.applyLiveReportedResult(result);
+		await this.applyDaylightReportedResult(result);
 		const pending = this.pendingCommands.get(result.id);
 		if (pending) {
 			clearTimeout(pending.timeout);
@@ -661,6 +952,7 @@ class Sanlightmesh extends utils.Adapter {
 		}
 		if (statusBase) await this.writeCommandStatus(statusBase, result, false);
 		await this.applyPerLampClockResults(result);
+		await this.applyPerLampDaylightResults(result);
 		await this.setStateAsync('commands.pending', this.pendingCommands.size > 0, true);
 		if (!result.ok) await this.setStateAsync('commands.lastError', result.message, true);
 	}
@@ -708,6 +1000,30 @@ class Sanlightmesh extends utils.Adapter {
 		}
 	}
 
+	private async applyDaylightReportedResult(result: GatewayResult): Promise<void> {
+		if (result.action !== 'read-daylight') return;
+		const daylightReported = result.details?.daylightReported;
+		if (!daylightReported || typeof daylightReported !== 'object' || Array.isArray(daylightReported)) return;
+
+		for (const [rawAddress, value] of Object.entries(daylightReported)) {
+			try {
+				const address = normalizeAddress(rawAddress);
+				if (!this.knownNodes.has(address)) await this.ensureLamp(address, `SANlight ${address}`);
+				const report = parseDaylightData(value, `daylightReported.${address}`);
+				if (!report.parsed || !report.configuration) continue;
+				await this.applyDaylightState(address, {
+					...report,
+					verified: true,
+					verifiedAt: result.timestamp,
+					lastReadAt: result.timestamp,
+					lastReadOk: true,
+				});
+			} catch (error) {
+				this.log.warn(`Ignored malformed daylight result for lamp ${rawAddress}: ${(error as Error).message}`);
+			}
+		}
+	}
+
 	private async applyPerLampClockResults(result: GatewayResult): Promise<void> {
 		if (result.target !== 'all' || (result.action !== 'sync-clock' && result.action !== 'set-clock')) return;
 		const nodes = result.details?.nodes;
@@ -731,6 +1047,67 @@ class Sanlightmesh extends utils.Adapter {
 			} catch (error) {
 				this.log.warn(`Ignored malformed clock result for lamp ${rawAddress}: ${(error as Error).message}`);
 			}
+		}
+	}
+
+	private async applyPerLampDaylightResults(result: GatewayResult): Promise<void> {
+		if (result.action !== 'read-daylight' || result.target !== 'all') return;
+		const reportedRaw = result.details?.daylightReported;
+		const errorsRaw = result.details?.errors;
+		const reported =
+			reportedRaw && typeof reportedRaw === 'object' && !Array.isArray(reportedRaw)
+				? (reportedRaw as Record<string, unknown>)
+				: {};
+		const errors =
+			errorsRaw && typeof errorsRaw === 'object' && !Array.isArray(errorsRaw)
+				? (errorsRaw as Record<string, unknown>)
+				: {};
+		const addresses = new Set<string>(this.presentNodes);
+		for (const rawAddress of [...Object.keys(reported), ...Object.keys(errors)]) {
+			try {
+				addresses.add(normalizeAddress(rawAddress));
+			} catch (error) {
+				this.log.warn(
+					`Ignored invalid lamp address ${rawAddress} in daylight result: ${(error as Error).message}`,
+				);
+			}
+		}
+
+		for (const address of [...addresses].sort()) {
+			if (!this.knownNodes.has(address)) await this.ensureLamp(address, `SANlight ${address}`);
+			let status = 'failed';
+			let ok = false;
+			let message =
+				typeof errors[address] === 'string'
+					? String(errors[address])
+					: `No daylight configuration was returned for lamp ${address}.`;
+			const rawReport = reported[address];
+			if (rawReport !== undefined) {
+				try {
+					const report = parseDaylightData(rawReport, `daylightReported.${address}`);
+					if (report.parsed) {
+						status = 'verified';
+						ok = true;
+						message = `Daylight configuration verified for lamp ${address}.`;
+					} else {
+						status = 'partial';
+						message = report.parseError || `Raw daylight response retained for lamp ${address}.`;
+					}
+				} catch (error) {
+					message = `Malformed daylight result for lamp ${address}: ${(error as Error).message}`;
+				}
+			}
+			await this.writeCommandStatus(
+				`lamps.${address}.command`,
+				{
+					...result,
+					ok,
+					status,
+					target: address,
+					message,
+				},
+				false,
+			);
 		}
 	}
 
@@ -782,6 +1159,7 @@ class Sanlightmesh extends utils.Adapter {
 		for (const [channel, labelEn, labelDe] of [
 			['info', 'Information', 'Information'],
 			['state', 'Verified state', 'Verifizierter Zustand'],
+			['daylight', 'Daylight schedule', 'Tageslichtplan'],
 			['control', 'Controls', 'Steuerung'],
 			['command', 'Command status', 'Befehlsstatus'],
 		] as const) {
@@ -841,6 +1219,17 @@ class Sanlightmesh extends utils.Adapter {
 					false,
 					100,
 					'%',
+				),
+			],
+			[
+				'info.supportsDaylightRead',
+				this.stateCommon(
+					'Supports daylight schedule read',
+					'Unterstützt das Lesen des Tageslichtplans',
+					'boolean',
+					'indicator',
+					false,
+					false,
 				),
 			],
 			[
@@ -939,6 +1328,223 @@ class Sanlightmesh extends utils.Adapter {
 				),
 			],
 			[
+				'daylight.verified',
+				this.stateCommon(
+					'Daylight configuration verified',
+					'Tageslichtkonfiguration verifiziert',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
+				'daylight.verifiedAt',
+				this.stateCommon(
+					'Daylight configuration verification timestamp',
+					'Zeitstempel der Tageslichtkonfiguration',
+					'string',
+					'date',
+					false,
+					'',
+				),
+			],
+			[
+				'daylight.lastReadAt',
+				this.stateCommon(
+					'Last daylight read timestamp',
+					'Zeitstempel des letzten Tageslicht-Lesevorgangs',
+					'string',
+					'date',
+					false,
+					'',
+				),
+			],
+			[
+				'daylight.lastReadOk',
+				this.stateCommon(
+					'Last daylight read successful',
+					'Letzter Tageslicht-Lesevorgang erfolgreich',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
+				'daylight.lastError',
+				this.stateCommon(
+					'Last daylight read error',
+					'Letzter Tageslicht-Lesefehler',
+					'string',
+					'text',
+					false,
+					'',
+				),
+			],
+			[
+				'daylight.analysisVersion',
+				this.stateCommon(
+					'Daylight analysis version',
+					'Version der Tageslicht-Auswertung',
+					'number',
+					'value',
+					false,
+					1,
+				),
+			],
+			[
+				'daylight.analysisValid',
+				this.stateCommon(
+					'Daylight schedule analysis valid',
+					'Tageslichtplan-Auswertung gültig',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
+				'daylight.analysisError',
+				this.stateCommon(
+					'Daylight analysis error',
+					'Fehler der Tageslicht-Auswertung',
+					'string',
+					'text',
+					false,
+					'',
+				),
+			],
+			[
+				'daylight.profileId',
+				this.stateCommon('Daylight profile ID', 'Tageslichtprofil-ID', 'number', 'value', false, 0),
+			],
+			[
+				'daylight.profileName',
+				this.stateCommon('Daylight profile name', 'Name des Tageslichtprofils', 'string', 'text', false, ''),
+			],
+			[
+				'daylight.valueCount',
+				this.stateCommon(
+					'Daylight datapoint count',
+					'Anzahl der Tageslicht-Datenpunkte',
+					'number',
+					'value',
+					false,
+					0,
+				),
+			],
+			[
+				'daylight.onHours',
+				this.stateCommon(
+					'Scheduled light hours',
+					'Geplante Lichtstunden',
+					'number',
+					'value.interval',
+					false,
+					0,
+					'h',
+				),
+			],
+			[
+				'daylight.offHours',
+				this.stateCommon(
+					'Scheduled dark hours',
+					'Geplante Dunkelstunden',
+					'number',
+					'value.interval',
+					false,
+					0,
+					'h',
+				),
+			],
+			[
+				'daylight.schema',
+				this.stateCommon(
+					'Rounded light:dark schema',
+					'Gerundetes Licht:Dunkel-Schema',
+					'string',
+					'text',
+					false,
+					'',
+				),
+			],
+			[
+				'daylight.cycleType',
+				this.stateCommon(
+					'Cultivation cycle classification',
+					'Anbauzyklus-Klassifizierung',
+					'string',
+					'text',
+					false,
+					'',
+				),
+			],
+			[
+				'daylight.lightWindowCount',
+				this.stateCommon('Light window count', 'Anzahl der Lichtfenster', 'number', 'value', false, 0),
+			],
+			[
+				'daylight.configurationFingerprint',
+				this.stateCommon(
+					'Configuration fingerprint',
+					'Konfigurations-Fingerabdruck',
+					'string',
+					'text',
+					false,
+					'',
+				),
+			],
+			[
+				'daylight.scheduleFingerprint',
+				this.stateCommon('Schedule fingerprint', 'Zeitplan-Fingerabdruck', 'string', 'text', false, ''),
+			],
+			[
+				'daylight.configurationJson',
+				this.stateCommon(
+					'Daylight configuration JSON',
+					'Tageslichtkonfiguration als JSON',
+					'string',
+					'json',
+					false,
+					'{}',
+				),
+			],
+			[
+				'daylight.valuesJson',
+				this.stateCommon(
+					'Daylight datapoints JSON',
+					'Tageslicht-Datenpunkte als JSON',
+					'string',
+					'json',
+					false,
+					'[]',
+				),
+			],
+			[
+				'daylight.gatewayJson',
+				this.stateCommon(
+					'Complete gateway daylight JSON',
+					'Vollständiges Gateway-Tageslicht-JSON',
+					'string',
+					'json',
+					false,
+					'{}',
+				),
+			],
+			[
+				'daylight.parserLayout',
+				this.stateCommon('Gateway parser layout', 'Gateway-Parser-Layout', 'string', 'text', false, ''),
+			],
+			[
+				'daylight.rawPduHex',
+				this.stateCommon('Raw daylight PDU', 'Rohes Tageslicht-PDU', 'string', 'text', false, ''),
+			],
+			[
+				'daylight.rawParametersHex',
+				this.stateCommon('Raw daylight parameters', 'Rohe Tageslicht-Parameter', 'string', 'text', false, ''),
+			],
+			[
 				'control.maxBrightness',
 				{
 					...this.stateCommon(
@@ -958,6 +1564,10 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'control.refresh',
 				this.stateCommon('Refresh lamp', 'Lampe aktualisieren', 'boolean', 'button', true, false),
+			],
+			[
+				'control.readDaylight',
+				this.stateCommon('Read daylight schedule', 'Tageslichtplan lesen', 'boolean', 'button', true, false),
 			],
 			[
 				'control.syncClockNow',
@@ -1158,6 +1768,13 @@ class Sanlightmesh extends utils.Adapter {
 				);
 				return;
 			}
+			if (relative === 'gateway.control.readAllDaylight') {
+				await this.ackButton(relative);
+				await this.sendCommand(
+					createReadDaylightCommand(this.newCommandId('read-daylight', 'all'), 'all', this.commandTtl()),
+				);
+				return;
+			}
 			if (relative === 'gateway.control.refreshInfo') {
 				await this.ackButton(relative);
 				await this.sendCommand(
@@ -1208,7 +1825,7 @@ class Sanlightmesh extends utils.Adapter {
 				return;
 			}
 			const match =
-				/^lamps\.([0-9A-Fa-f]{4})\.control\.(maxBrightness|refresh|blackout|syncClockNow|clockTargetSeconds|clockTargetTime|applyClockTarget)$/.exec(
+				/^lamps\.([0-9A-Fa-f]{4})\.control\.(maxBrightness|refresh|readDaylight|blackout|syncClockNow|clockTargetSeconds|clockTargetTime|applyClockTarget)$/.exec(
 					relative,
 				);
 			if (!match?.[1] || !match[2]) return;
@@ -1222,6 +1839,11 @@ class Sanlightmesh extends utils.Adapter {
 				await this.ackButton(relative);
 				await this.sendCommand(
 					createRefreshCommand(this.newCommandId('refresh', address), address, this.commandTtl()),
+				);
+			} else if (match[2] === 'readDaylight') {
+				await this.ackButton(relative);
+				await this.sendCommand(
+					createReadDaylightCommand(this.newCommandId('read-daylight', address), address, this.commandTtl()),
 				);
 			} else if (match[2] === 'syncClockNow') {
 				await this.ackButton(relative);

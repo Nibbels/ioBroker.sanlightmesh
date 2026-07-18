@@ -5,6 +5,7 @@ import {
 	ProtocolError,
 	assertSafeRetainFlag,
 	createBlackoutCommand,
+	createReadDaylightCommand,
 	createRefreshCommand,
 	createRestoreBlackoutCommand,
 	createSetMaxCommand,
@@ -68,6 +69,13 @@ test('creates safe commands and keeps blackout explicit', () => {
 		ttlSeconds: 30,
 	});
 	assert.equal(createBlackoutCommand('blackout-1', '0003', 30, now).confirmed, true);
+	assert.deepEqual(createReadDaylightCommand('daylight-1', 'all', 30, now), {
+		id: 'daylight-1',
+		action: 'read-daylight',
+		target: 'all',
+		createdAt: now.toISOString(),
+		ttlSeconds: 30,
+	});
 	assert.equal(createRestoreBlackoutCommand('restore-1', 30, now).target, 'latest');
 	assert.throws(() => createSetMaxCommand('set-zero', '0003', 0, 30, now), ProtocolError);
 });
@@ -114,9 +122,11 @@ test('rejects payload addresses that do not match their MQTT topic', () => {
 		address: '0003',
 		name: 'Right',
 		writable: { maxBrightness: { minimum: 20, maximum: 100 } },
+		readable: { daylightConfiguration: true },
 		supportsExplicitBlackout: true,
 	};
 	assert.equal(parseNodeMeta(JSON.stringify(meta), '0003').name, 'Right');
+	assert.equal(parseNodeMeta(JSON.stringify(meta), '0003').readable?.daylightConfiguration, true);
 	assert.throws(() => parseNodeMeta(JSON.stringify(meta), '0002'), /mismatch/);
 	const state = {
 		protocolVersion: 1,
@@ -130,6 +140,111 @@ test('rejects payload addresses that do not match their MQTT topic', () => {
 	assert.equal(parseNodeState(JSON.stringify(state), '0003').maxBrightness, 68);
 	assert.equal(parseNodeState(JSON.stringify(state), '0003').liveVerified, false);
 	assert.throws(() => parseNodeState(JSON.stringify({ ...state, off: true }), '0003'), /off must be true/);
+});
+
+test('parses verified stored daylight configuration and combined status', () => {
+	const parsed = parseNodeState(
+		JSON.stringify({
+			protocolVersion: 1,
+			address: '0003',
+			name: 'Right',
+			maxBrightness: 30,
+			off: false,
+			verified: true,
+			verifiedAt: '2026-07-18T15:17:15Z',
+			liveVerified: false,
+			daylightConfiguration: {
+				verified: true,
+				lastReadAt: '2026-07-18T15:17:15Z',
+				lastReadOk: true,
+				verifiedAt: '2026-07-18T15:17:15Z',
+				requestOpcode: 14,
+				requestOpcodeHex: '0x0E',
+				statusOpcode: 15,
+				statusOpcodeHex: '0x0F',
+				rawPduHex: 'cf8b0a00',
+				rawParametersHex: '00',
+				parsed: true,
+				parserLayout: 'combined-live-max-prefix-v1',
+				combinedStatus: {
+					lampTimeMs: 62_294_457,
+					lampClock: '17:18:14.457',
+					liveBrightnessRaw: 0,
+					liveBrightnessPercentEstimate: 0,
+					maxBrightness: 30,
+				},
+				configuration: {
+					id: 1_303_806_668,
+					name: 'Absolut Dunkel',
+					valueCount: 2,
+					values: [
+						{ timeInMinutes: 0, time: '00:00', brightness: 0 },
+						{ timeInMinutes: 1440, time: '24:00', brightness: 0 },
+					],
+				},
+			},
+		}),
+		'0003',
+	);
+	assert.equal(parsed.daylightConfiguration?.configuration?.name, 'Absolut Dunkel');
+	assert.equal(parsed.daylightConfiguration?.combinedStatus?.lampClock, '17:18:14.457');
+});
+
+test('preserves a verified daylight configuration when the newest read failed', () => {
+	const base = {
+		protocolVersion: 1,
+		address: '0003',
+		name: 'Right',
+		maxBrightness: 30,
+		off: false,
+		verified: true,
+		verifiedAt: '2026-07-18T15:17:15Z',
+		liveVerified: false,
+		daylightConfiguration: {
+			verified: true,
+			lastReadAt: '2026-07-18T15:20:00Z',
+			lastReadOk: false,
+			lastError: 'no daylight status was returned',
+			verifiedAt: '2026-07-18T15:17:15Z',
+			requestOpcode: 3,
+			requestOpcodeHex: '0x03',
+			statusOpcode: 4,
+			statusOpcodeHex: '0x04',
+			rawPduHex: 'c48b0a00',
+			rawParametersHex: '00',
+			parsed: true,
+			configuration: {
+				id: 7,
+				name: 'Flower',
+				valueCount: 2,
+				values: [
+					{ timeInMinutes: 0, time: '00:00', brightness: 0 },
+					{ timeInMinutes: 1440, time: '24:00', brightness: 0 },
+				],
+			},
+		},
+	};
+	const parsed = parseNodeState(JSON.stringify(base), '0003');
+	assert.equal(parsed.daylightConfiguration?.verified, true);
+	assert.equal(parsed.daylightConfiguration?.lastReadOk, false);
+	assert.equal(parsed.daylightConfiguration?.configuration?.id, 7);
+	assert.throws(
+		() =>
+			parseNodeState(
+				JSON.stringify({
+					...base,
+					daylightConfiguration: {
+						...base.daylightConfiguration,
+						configuration: {
+							...base.daylightConfiguration.configuration,
+							valueCount: 3,
+						},
+					},
+				}),
+				'0003',
+			),
+		/valueCount must match/,
+	);
 });
 
 test('parses verified live lamp brightness and whole-second clock separately from MaxBrightness', () => {

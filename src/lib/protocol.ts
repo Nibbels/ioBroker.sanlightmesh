@@ -10,11 +10,22 @@ const GATEWAY_ID_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
 const NODE_ADDRESS_RE = /^[0-9A-F]{4}$/;
 const COMMAND_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const LAMP_CLOCK_RE = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
+const DAYLIGHT_CLOCK_RE = /^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/;
+const DAYLIGHT_COMBINED_CLOCK_RE = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}$/;
+const LOWER_HEX_RE = /^[0-9a-f]+$/;
+const LOWER_HEX_OR_EMPTY_RE = /^[0-9a-f]*$/;
 const CLOCK_TARGET_RE = /^(?:([01]\d|2[0-3])):([0-5]\d)(?::([0-5]\d))?$/;
 
 export type NodeTarget = string | 'all';
 export type GatewayAction =
-	'refresh' | 'set-max' | 'blackout' | 'restore-blackout' | 'sync-clock' | 'set-clock' | 'refresh-gateway-info';
+	| 'refresh'
+	| 'read-daylight'
+	| 'set-max'
+	| 'blackout'
+	| 'restore-blackout'
+	| 'sync-clock'
+	| 'set-clock'
+	| 'refresh-gateway-info';
 
 export interface GatewayNode {
 	address: string;
@@ -50,7 +61,54 @@ export interface NodeMeta {
 			maximum?: number;
 		};
 	};
+	readable?: {
+		daylightConfiguration?: boolean;
+	};
 	supportsExplicitBlackout: boolean;
+}
+
+export interface DaylightValue {
+	timeInMinutes: number;
+	time: string;
+	brightness: number;
+}
+
+export interface DaylightConfiguration {
+	id: number;
+	name: string;
+	valueCount: number;
+	values: DaylightValue[];
+}
+
+export interface DaylightCombinedStatus {
+	lampTimeMs: number;
+	lampClock: string;
+	liveBrightnessRaw: number;
+	liveBrightnessPercentEstimate: number;
+	maxBrightness: number;
+}
+
+export interface DaylightData {
+	requestOpcode: 3 | 14;
+	requestOpcodeHex: '0x03' | '0x0E';
+	statusOpcode: 4 | 15;
+	statusOpcodeHex: '0x04' | '0x0F';
+	rawPduHex: string;
+	rawParametersHex: string;
+	parsed: boolean;
+	parserLayout?: string;
+	parseError?: string;
+	configuration?: DaylightConfiguration;
+	combinedStatus?: DaylightCombinedStatus;
+}
+
+export interface DaylightState extends Partial<DaylightData> {
+	verified: boolean;
+	verifiedAt?: string;
+	lastReadAt: string;
+	lastReadOk: boolean;
+	lastError?: string;
+	lastObservation?: DaylightData;
 }
 
 export interface NodeState {
@@ -68,6 +126,7 @@ export interface NodeState {
 	liveBrightnessRaw?: number;
 	liveBrightnessPercentEstimate?: number;
 	liveVerifiedAt?: string;
+	daylightConfiguration?: DaylightState;
 }
 
 export interface GatewayResult {
@@ -87,6 +146,14 @@ export interface GatewayResult {
 export interface RefreshCommand {
 	id: string;
 	action: 'refresh';
+	target: string;
+	createdAt: string;
+	ttlSeconds: number;
+}
+
+export interface ReadDaylightCommand {
+	id: string;
+	action: 'read-daylight';
 	target: string;
 	createdAt: string;
 	ttlSeconds: number;
@@ -146,6 +213,7 @@ export interface RefreshGatewayInfoCommand {
 
 export type GatewayCommand =
 	| RefreshCommand
+	| ReadDaylightCommand
 	| SetMaxCommand
 	| BlackoutCommand
 	| RestoreBlackoutCommand
@@ -231,6 +299,190 @@ function requireTimestamp(value: unknown, label: string): string {
 		throw new ProtocolError(`${label} must be an ISO-8601 timestamp with timezone`);
 	}
 	return text;
+}
+
+function requireLowerHex(value: unknown, label: string, allowEmpty = false): string {
+	const text = requireString(value, label, allowEmpty);
+	const pattern = allowEmpty ? LOWER_HEX_OR_EMPTY_RE : LOWER_HEX_RE;
+	if (!pattern.test(text)) throw new ProtocolError(`${label} must be lowercase hexadecimal`);
+	return text;
+}
+
+function formatDaylightMinute(value: number): string {
+	if (value === 1440) return '24:00';
+	return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+}
+
+function formatMillisecondsAsClock(value: number): string {
+	const normalized = value % 86_400_000;
+	const totalSeconds = Math.floor(normalized / 1000);
+	const milliseconds = normalized % 1000;
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+}
+
+function parseDaylightConfiguration(value: unknown, label: string): DaylightConfiguration {
+	if (!isRecord(value)) throw new ProtocolError(`${label} must be an object`);
+	const valuesRaw = value.values;
+	if (!Array.isArray(valuesRaw)) throw new ProtocolError(`${label}.values must be an array`);
+	if (valuesRaw.length > 96) throw new ProtocolError(`${label}.values must contain at most 96 entries`);
+
+	let previousMinute = -1;
+	const values = valuesRaw.map((entry, index): DaylightValue => {
+		if (!isRecord(entry)) throw new ProtocolError(`${label}.values[${index}] must be an object`);
+		const timeInMinutes = requireInteger(entry.timeInMinutes, `${label}.values[${index}].timeInMinutes`, 0, 1440);
+		if (timeInMinutes < previousMinute) {
+			throw new ProtocolError(`${label}.values must be ordered by timeInMinutes`);
+		}
+		previousMinute = timeInMinutes;
+		const time = requireString(entry.time, `${label}.values[${index}].time`);
+		if (!DAYLIGHT_CLOCK_RE.test(time) || time !== formatDaylightMinute(timeInMinutes)) {
+			throw new ProtocolError(`${label}.values[${index}].time must match timeInMinutes`);
+		}
+		return {
+			timeInMinutes,
+			time,
+			brightness: requireInteger(entry.brightness, `${label}.values[${index}].brightness`, 0, 100),
+		};
+	});
+
+	const valueCount = requireInteger(value.valueCount, `${label}.valueCount`, 0, 96);
+	if (valueCount !== values.length) throw new ProtocolError(`${label}.valueCount must match values.length`);
+	return {
+		id: requireInteger(value.id, `${label}.id`, 0, 0xffffffff),
+		name: requireString(value.name, `${label}.name`, true),
+		valueCount,
+		values,
+	};
+}
+
+function parseDaylightCombinedStatus(value: unknown, label: string): DaylightCombinedStatus {
+	if (!isRecord(value)) throw new ProtocolError(`${label} must be an object`);
+	const lampTimeMs = requireInteger(value.lampTimeMs, `${label}.lampTimeMs`, 0, 0xffffffff);
+	const lampClock = requireString(value.lampClock, `${label}.lampClock`);
+	if (!DAYLIGHT_COMBINED_CLOCK_RE.test(lampClock) || lampClock !== formatMillisecondsAsClock(lampTimeMs)) {
+		throw new ProtocolError(`${label}.lampClock must match lampTimeMs`);
+	}
+	const liveBrightnessRaw = requireInteger(value.liveBrightnessRaw, `${label}.liveBrightnessRaw`, 0, 0xffff);
+	const liveBrightnessPercentEstimate = requireFiniteNumber(
+		value.liveBrightnessPercentEstimate,
+		`${label}.liveBrightnessPercentEstimate`,
+		0,
+		6553.5,
+	);
+	if (Math.abs(liveBrightnessPercentEstimate - liveBrightnessRaw / 10) > 0.000001) {
+		throw new ProtocolError(`${label}.liveBrightnessPercentEstimate must equal liveBrightnessRaw / 10`);
+	}
+	return {
+		lampTimeMs,
+		lampClock,
+		liveBrightnessRaw,
+		liveBrightnessPercentEstimate,
+		maxBrightness: requireInteger(value.maxBrightness, `${label}.maxBrightness`, 0, 100),
+	};
+}
+
+export function parseDaylightData(value: unknown, label = 'daylight data'): DaylightData {
+	if (!isRecord(value)) throw new ProtocolError(`${label} must be an object`);
+	const requestOpcode = requireInteger(value.requestOpcode, `${label}.requestOpcode`);
+	if (requestOpcode !== 3 && requestOpcode !== 14) {
+		throw new ProtocolError(`${label}.requestOpcode must be 3 or 14`);
+	}
+	const expectedRequestHex = requestOpcode === 3 ? '0x03' : '0x0E';
+	const requestOpcodeHex = requireString(value.requestOpcodeHex, `${label}.requestOpcodeHex`);
+	if (requestOpcodeHex !== expectedRequestHex) {
+		throw new ProtocolError(`${label}.requestOpcodeHex must match requestOpcode`);
+	}
+	const statusOpcode = requireInteger(value.statusOpcode, `${label}.statusOpcode`);
+	const expectedStatusOpcode = requestOpcode === 3 ? 4 : 15;
+	if (statusOpcode !== expectedStatusOpcode) {
+		throw new ProtocolError(`${label}.statusOpcode does not match requestOpcode`);
+	}
+	const expectedStatusHex = statusOpcode === 4 ? '0x04' : '0x0F';
+	const statusOpcodeHex = requireString(value.statusOpcodeHex, `${label}.statusOpcodeHex`);
+	if (statusOpcodeHex !== expectedStatusHex) {
+		throw new ProtocolError(`${label}.statusOpcodeHex must match statusOpcode`);
+	}
+
+	const parsed = requireBoolean(value.parsed, `${label}.parsed`);
+	const configuration =
+		value.configuration === undefined
+			? undefined
+			: parseDaylightConfiguration(value.configuration, `${label}.configuration`);
+	if (parsed !== (configuration !== undefined)) {
+		throw new ProtocolError(`${label}.parsed must be true exactly when configuration is present`);
+	}
+	const combinedStatus =
+		value.combinedStatus === undefined
+			? undefined
+			: parseDaylightCombinedStatus(value.combinedStatus, `${label}.combinedStatus`);
+	if (combinedStatus !== undefined && requestOpcode !== 14) {
+		throw new ProtocolError(`${label}.combinedStatus requires request opcode 0x0E`);
+	}
+
+	return {
+		requestOpcode,
+		requestOpcodeHex: requestOpcodeHex as DaylightData['requestOpcodeHex'],
+		statusOpcode,
+		statusOpcodeHex: statusOpcodeHex as DaylightData['statusOpcodeHex'],
+		rawPduHex: requireLowerHex(value.rawPduHex, `${label}.rawPduHex`),
+		rawParametersHex: requireLowerHex(value.rawParametersHex, `${label}.rawParametersHex`, true),
+		parsed,
+		parserLayout:
+			value.parserLayout === undefined ? undefined : requireString(value.parserLayout, `${label}.parserLayout`),
+		parseError:
+			value.parseError === undefined ? undefined : requireString(value.parseError, `${label}.parseError`, true),
+		configuration,
+		combinedStatus,
+	};
+}
+
+function parseDaylightState(value: unknown): DaylightState {
+	if (!isRecord(value)) throw new ProtocolError('daylightConfiguration must be an object');
+	const verified = requireBoolean(value.verified, 'daylightConfiguration.verified');
+	const lastReadOk = requireBoolean(value.lastReadOk, 'daylightConfiguration.lastReadOk');
+	const dataFields = [
+		'requestOpcode',
+		'requestOpcodeHex',
+		'statusOpcode',
+		'statusOpcodeHex',
+		'rawPduHex',
+		'rawParametersHex',
+		'parsed',
+	] as const;
+	const hasData = dataFields.some((name) => value[name] !== undefined);
+	const data = hasData ? parseDaylightData(value, 'daylightConfiguration') : undefined;
+	const verifiedAt =
+		value.verifiedAt === undefined
+			? undefined
+			: requireTimestamp(value.verifiedAt, 'daylightConfiguration.verifiedAt');
+	if (verified && (!data?.parsed || !data.configuration || verifiedAt === undefined)) {
+		throw new ProtocolError('verified daylightConfiguration requires parsed configuration data and verifiedAt');
+	}
+	if (!verified && verifiedAt !== undefined) {
+		throw new ProtocolError('daylightConfiguration.verifiedAt requires verified=true');
+	}
+	if (lastReadOk && !verified) {
+		throw new ProtocolError('daylightConfiguration.lastReadOk=true requires verified=true');
+	}
+
+	return {
+		verified,
+		verifiedAt,
+		lastReadAt: requireTimestamp(value.lastReadAt, 'daylightConfiguration.lastReadAt'),
+		lastReadOk,
+		lastError:
+			value.lastError === undefined
+				? undefined
+				: requireString(value.lastError, 'daylightConfiguration.lastError', true),
+		...(data ?? {}),
+		lastObservation:
+			value.lastObservation === undefined
+				? undefined
+				: parseDaylightData(value.lastObservation, 'daylightConfiguration.lastObservation'),
+	};
 }
 
 function parseJsonObject(payload: Buffer | string, label: string): Record<string, unknown> {
@@ -435,11 +687,22 @@ export function parseNodeMeta(payload: Buffer | string, expectedAddress: string)
 			};
 		}
 	}
+	let readable: NodeMeta['readable'];
+	if (document.readable !== undefined) {
+		if (!isRecord(document.readable)) throw new ProtocolError('readable must be an object');
+		readable = {
+			daylightConfiguration:
+				document.readable.daylightConfiguration === undefined
+					? undefined
+					: requireBoolean(document.readable.daylightConfiguration, 'readable.daylightConfiguration'),
+		};
+	}
 	return {
 		protocolVersion: PROTOCOL_VERSION,
 		address,
 		name: requireString(document.name, 'name', true),
 		writable,
+		readable,
 		supportsExplicitBlackout: requireBoolean(document.supportsExplicitBlackout, 'supportsExplicitBlackout'),
 	};
 }
@@ -505,6 +768,10 @@ export function parseNodeState(payload: Buffer | string, expectedAddress: string
 		liveBrightnessRaw,
 		liveBrightnessPercentEstimate,
 		liveVerifiedAt,
+		daylightConfiguration:
+			document.daylightConfiguration === undefined
+				? undefined
+				: parseDaylightState(document.daylightConfiguration),
 	};
 }
 
@@ -521,6 +788,7 @@ export function parseGatewayResult(payload: Buffer | string, expectedCommandId: 
 		if (
 			![
 				'refresh',
+				'read-daylight',
 				'set-max',
 				'blackout',
 				'restore-blackout',
@@ -571,6 +839,19 @@ export function createRefreshCommand(id: string, target: string, ttlSeconds: num
 	return {
 		...commonCommand(id, ttlSeconds, now),
 		action: 'refresh',
+		target: normalizeNodeTarget(target),
+	};
+}
+
+export function createReadDaylightCommand(
+	id: string,
+	target: string,
+	ttlSeconds: number,
+	now = new Date(),
+): ReadDaylightCommand {
+	return {
+		...commonCommand(id, ttlSeconds, now),
+		action: 'read-daylight',
 		target: normalizeNodeTarget(target),
 	};
 }
