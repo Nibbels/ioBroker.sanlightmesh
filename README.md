@@ -10,6 +10,19 @@ network and creates normal ioBroker devices, states and controls.
 > Unofficial community project. Not affiliated with or endorsed by SANlight GmbH.
 > The SANlight name is used only to identify compatible products and software.
 
+## Community support
+
+This adapter and its gateway are maintained by
+[Nibbels](https://github.com/Nibbels) as independent community software.
+Questions, defect reports and compatibility findings should go to the
+[central community support thread](https://github.com/Nibbels/ioBroker.sanlightmesh/issues/1).
+
+Please do not ask SANlight product support to troubleshoot this adapter or the
+community gateway. These components are not SANlight products; installation,
+operation and troubleshooting are handled through the community project.
+Security-sensitive findings should follow
+[SECURITY.md](SECURITY.md).
+
 ## Architecture
 
 ![Community gateway Raspberry Pi for SANlight Mesh with local Mosquitto broker connected over LAN or WLAN to an ioBroker Raspberry Pi](docs/sanlight_mesh_mqtt_iobroker_architecture.png)
@@ -31,6 +44,12 @@ Gateway repository:
 ```text
 https://github.com/Nibbels/sanlight-mesh-mqtt-gateway
 ```
+
+Before enabling write controls or automation, confirm that an untouched offline
+backup of the original `SANlightMesh.json` and any existing gateway state is
+available on the gateway side. Incorrect automation can change lamp brightness
+or lighting periods. Begin with the read-only test below and use only small,
+reversible changes until the complete path has been verified.
 
 ## Install the adapter
 
@@ -189,6 +208,8 @@ the adapter remains pre-1.0.
 - [INSTRUCTIONS.md](INSTRUCTIONS.md) — operation, updates and troubleshooting
 - [docs/OBJECT_MODEL.md](docs/OBJECT_MODEL.md) — complete ioBroker object model
 - [SECURITY.md](SECURITY.md) — credentials and network boundaries
+- [docs/ASSET_NOTICES.md](docs/ASSET_NOTICES.md) — documentation-image provenance
+- [docs/HISTORY_AUDIT.md](docs/HISTORY_AUDIT.md) — maintainer history and release audit
 - [CHANGELOG.md](CHANGELOG.md) — notable changes
 - [docs/RELEASING.md](docs/RELEASING.md) — maintainer release checklist
 

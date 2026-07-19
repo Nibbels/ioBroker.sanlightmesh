@@ -63,6 +63,16 @@ The committed `package-lock.json` must use the public npm registry and must not
 contain private/internal build-environment URLs. Package validation enforces
 this boundary.
 
+## Project support
+
+Normal installation questions, defect reports and compatibility findings belong
+in the
+[central community support thread](https://github.com/Nibbels/ioBroker.sanlightmesh/issues/1).
+Do not include credentials, Mesh keys or private exports there.
+
+This adapter and its gateway are independent community software. Please do not
+ask SANlight product support to troubleshoot them.
+
 ## Reporting
 
 Open a GitHub security advisory or contact the repository owner privately. Do
