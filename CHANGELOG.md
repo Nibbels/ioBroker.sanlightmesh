@@ -22,6 +22,9 @@ explicitly.
   13 light hours but the union of active lamp schedules reaches the 13..15 hour
   transition range or beyond; differing schedules at 13+ hours remain
   informational.
+- Clarify that schedule/configuration/schema difference states are informational,
+  while `conflict` is the actionable gateway-wide flowering-risk alarm; also
+  correct singular/plural wording in fleet summaries and conflict reasons.
 - Add an explicit `transition` classification for 13..15 light hours and cover
   shifted flowering schedules, all-dark exclusions, mixed flowering/vegetative
   profiles, unusual rounded schedules, multiple windows and metadata-only changes.

@@ -266,11 +266,10 @@ export function buildDaylightFleetSummary(entries: Iterable<DaylightFleetEntry>)
 	} else if (activeLamps.length === 0) {
 		conflictReason = 'All verified lamps are always dark and contribute no plant-light exposure.';
 	} else if (conflict) {
-		conflictReason = `Flowering-risk conflict: ${floweringIntentLamps
-			.map((entry) => entry.address)
-			.join(
-				', ',
-			)} individually remain below ${FLOWERING_MAX_HOURS} light hours, but the combined exposure is ${roundHours(combinedOnMinutes)} hours.`;
+		const addresses = floweringIntentLamps.map((entry) => entry.address).join(', ');
+		const subject =
+			floweringIntentLamps.length === 1 ? `lamp ${addresses} remains` : `lamps ${addresses} each remain`;
+		conflictReason = `Flowering-risk conflict: ${subject} below ${FLOWERING_MAX_HOURS} light hours, but the combined exposure is ${roundHours(combinedOnMinutes)} hours.`;
 	} else if (
 		scheduleDifference &&
 		activeLamps.every(
@@ -296,10 +295,11 @@ export function buildDaylightFleetSummary(entries: Iterable<DaylightFleetEntry>)
 				: '';
 		if (conflict) {
 			summary = `Flowering-risk conflict: ${activeLamps.length} active lamps combine to ${combinedSchema} (${combinedCycleType})${ignoredSuffix}.`;
-		} else if (scheduleDifference) {
+		} else if (scheduleDifference && activeLamps.length > 1) {
 			summary = `${activeLamps.length} active lamps have different schedules and combine to ${combinedSchema} (${combinedCycleType}) without a flowering-risk conflict${ignoredSuffix}.`;
 		} else {
-			summary = `${activeLamps.length} active lamp${activeLamps.length === 1 ? '' : 's'} combine to ${combinedSchema} (${combinedCycleType})${ignoredSuffix}.`;
+			const verb = activeLamps.length === 1 ? 'contributes' : 'combine';
+			summary = `${activeLamps.length} active lamp${activeLamps.length === 1 ? '' : 's'} ${verb} ${combinedSchema} (${combinedCycleType})${ignoredSuffix}.`;
 		}
 	}
 

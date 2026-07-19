@@ -122,9 +122,10 @@ from `profileName`; the SANlight app may display dark:light wording while the
 adapter's `schema` consistently uses light:dark.
 
 `gateway.daylight.scheduleDifference`, `configurationConflict` and
-`schemaConflict` describe raw differences. `gateway.daylight.conflict` is a
-cultivation-risk signal: always-dark lamps are ignored, active light windows are
-combined, and a conflict is raised only when at least one active lamp is below
+`schemaConflict` are informational comparison states. They neither fail the read
+command nor constitute an alarm by themselves. `gateway.daylight.conflict` is the
+actionable cultivation-risk signal: always-dark lamps are ignored, active light
+windows are combined, and a conflict is raised only when at least one active lamp is below
 13 light hours while the combined exposure reaches 13 hours or more. Use
 `combinedOnHours`, `combinedSchema`, `transitionWarning` and `conflictReason` for
 script decisions. In installations with multiple intentional grow zones, parse

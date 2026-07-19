@@ -415,8 +415,8 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'gateway.daylight.scheduleDifference',
 				this.stateCommon(
-					'Daylight schedules differ',
-					'Tageslichtpläne unterscheiden sich',
+					'Daylight schedules differ (informational)',
+					'Tageslichtpläne unterscheiden sich (informativ)',
 					'boolean',
 					'indicator',
 					false,
@@ -494,8 +494,8 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'gateway.daylight.conflict',
 				this.stateCommon(
-					'Daylight schedule conflict',
-					'Konflikt zwischen Tageslichtplänen',
+					'Flowering-risk conflict (actionable)',
+					'Blüte-Risikokonflikt (handlungsrelevant)',
 					'boolean',
 					'indicator',
 					false,
@@ -505,8 +505,8 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'gateway.daylight.conflictReason',
 				this.stateCommon(
-					'Daylight conflict reason',
-					'Begründung des Tageslichtkonflikts',
+					'Flowering-risk conflict reason',
+					'Begründung des Blüte-Risikokonflikts',
 					'string',
 					'text',
 					false,
@@ -516,8 +516,8 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'gateway.daylight.configurationConflict',
 				this.stateCommon(
-					'Daylight configuration conflict',
-					'Konflikt zwischen Tageslichtkonfigurationen',
+					'Daylight configurations differ (informational)',
+					'Tageslichtkonfigurationen unterscheiden sich (informativ)',
 					'boolean',
 					'indicator',
 					false,
@@ -527,8 +527,8 @@ class Sanlightmesh extends utils.Adapter {
 			[
 				'gateway.daylight.schemaConflict',
 				this.stateCommon(
-					'Daylight schema conflict',
-					'Konflikt zwischen Lichtschemata',
+					'Daylight schemas differ (informational)',
+					'Lichtschemata unterscheiden sich (informativ)',
 					'boolean',
 					'indicator',
 					false,

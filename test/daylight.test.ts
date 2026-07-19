@@ -211,7 +211,8 @@ test('ignores always-dark lamps for combined plant-light conflict evaluation', (
 	assert.equal(summary.combinedSchema, '12:12');
 	assert.equal(summary.combinedCycleType, 'flowering');
 	assert.equal(summary.conflict, false);
-	assert.match(summary.conflictReason, /always-dark lamp is ignored/i);
+	assert.equal(summary.conflictReason, '1 always-dark lamp is ignored for combined plant-light exposure.');
+	assert.equal(summary.summary, '1 active lamp contributes 12:12 (flowering); 1 always-dark lamp ignored.');
 });
 
 test('raises a flowering-risk conflict when shifted flowering schedules extend combined exposure', () => {
@@ -234,7 +235,10 @@ test('raises a flowering-risk conflict when shifted flowering schedules extend c
 	assert.equal(summary.combinedSchema, '24:0');
 	assert.equal(summary.combinedCycleType, 'alwaysOn');
 	assert.equal(summary.conflict, true);
-	assert.match(summary.conflictReason, /Flowering-risk conflict/);
+	assert.equal(
+		summary.conflictReason,
+		'Flowering-risk conflict: lamps 0002, 0003 each remain below 13 light hours, but the combined exposure is 24 hours.',
+	);
 });
 
 test('raises a flowering-risk conflict for a flowering profile combined with an 18:6 profile', () => {
@@ -243,6 +247,10 @@ test('raises a flowering-risk conflict for a flowering profile combined with an 
 	assert.equal(summary.scheduleDifference, true);
 	assert.equal(summary.schemaConflict, true);
 	assert.equal(summary.combinedSchema, '18:6');
+	assert.equal(
+		summary.conflictReason,
+		'Flowering-risk conflict: lamp 0003 remains below 13 light hours, but the combined exposure is 17.967 hours.',
+	);
 	assert.match(summary.summary, /Flowering-risk conflict/);
 });
 

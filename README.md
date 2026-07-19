@@ -120,9 +120,12 @@ The adapter derives these values from the datapoints, not from the profile
 name. A hardware-observed SANlight profile named `100% 6:18`, for example,
 contains an 18-hour light window and is exposed as schema `18:6`.
 
-`gateway.daylight.*` summarizes all currently present lamps. It exposes raw
-schedule/configuration differences separately from cultivation risk, unions the
-20%-threshold light windows of active lamps, and ignores `alwaysDark` lamps for
+`gateway.daylight.*` summarizes all currently present lamps.
+`scheduleDifference`, `configurationConflict` and `schemaConflict` are
+informational comparison states; they do not make the read fail and are not by
+themselves alarms. `conflict` is the actionable gateway-wide flowering-risk
+signal. The adapter unions the 20%-threshold light windows of active lamps and
+ignores `alwaysDark` lamps for
 combined plant exposure. A conflict is raised only when at least one active lamp
 is below 13 light hours while the combined exposure reaches 13 hours or more.
 Different schedules where every active lamp already has at least 13 hours remain

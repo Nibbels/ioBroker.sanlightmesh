@@ -101,8 +101,9 @@ all-dark/all-on are explicit; one-window schedules below 13 light hours are
 all active lamps, ignores always-dark lamps, and raises a cultivation conflict
 only when at least one active lamp is below 13 hours while the combined exposure
 reaches at least 13 hours. Raw schedule/configuration differences remain separate
-informational indicators. These values are automation hints; scripts can use the
-numeric and JSON states for stricter policy.
+informational indicators and never make a successful read fail; `conflict` is the
+actionable gateway-wide flowering-risk state. These values are automation hints;
+scripts can use the numeric and JSON states for stricter policy.
 
 ## Runtime packaging and compatibility
 

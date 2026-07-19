@@ -37,9 +37,9 @@ daylight configuration:
 - `analysisVersion`, `effectiveLightThreshold`
 - `verifiedLampCount`, `activeLampCount`, `ignoredAlwaysDarkLampCount`
 - `distinctScheduleCount`, `distinctConfigurationCount`, `distinctSchemaCount`
-- `scheduleDifference` — raw schedule fingerprints differ
-- `configurationConflict` — complete profile ID/name/datapoints differ
-- `schemaConflict` — rounded per-lamp schemas differ
+- `scheduleDifference` — informational: raw schedule fingerprints differ
+- `configurationConflict` — informational: complete profile ID/name/datapoints differ
+- `schemaConflict` — informational: rounded per-lamp schemas differ
 - `combinedOnHours`, `combinedOffHours`
 - `combinedSchema`, `combinedCycleType`, `combinedLightWindowCount`
 - `transitionWarning`
@@ -48,7 +48,9 @@ daylight configuration:
 
 The adapter unions the effective light windows of all active lamps. An
 `alwaysDark` lamp contributes no plant-light exposure and is counted in
-`ignoredAlwaysDarkLampCount`. `conflict` is deliberately narrower than a raw
+`ignoredAlwaysDarkLampCount`. The three difference indicators above are
+informational and never make a command fail. `conflict` is the actionable,
+gateway-wide flowering-risk alarm and is deliberately narrower than a raw
 schedule difference: it becomes true only when at least one active lamp has less
 than 13 effective light hours, but the union of active schedules reaches at
 least 13 hours. This catches shifted 12:12 schedules or a 12:12 lamp combined
