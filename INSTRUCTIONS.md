@@ -252,10 +252,10 @@ confirm that the instance is enabled and check the four health states.
 
 ### Tagged release installation
 
-Install the current immutable v0.3.0 source revision with:
+Install the current immutable v0.4.0 source revision with:
 
 ```bash
-iobroker url Nibbels/ioBroker.sanlightmesh#v0.3.0 sanlightmesh --debug
+iobroker url Nibbels/ioBroker.sanlightmesh#v0.4.0 sanlightmesh --debug
 ```
 
 Use the untagged GitHub URL only when intentionally testing the current `main`

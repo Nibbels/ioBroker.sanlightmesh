@@ -1,6 +1,6 @@
 {
 	"name": "iobroker.sanlightmesh",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "Native ioBroker integration for the community MQTT gateway for SANlight Mesh",
 	"author": {
 		"name": "Nibbels"

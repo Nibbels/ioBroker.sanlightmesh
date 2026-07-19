@@ -35,10 +35,10 @@ Current development branch:
 iobroker url https://github.com/Nibbels/ioBroker.sanlightmesh --debug
 ```
 
-Current immutable `v0.3.0` release after the tag is published:
+Current immutable `v0.4.0` release after the tag is published:
 
 ```bash
-iobroker url Nibbels/ioBroker.sanlightmesh#v0.3.0 sanlightmesh --debug
+iobroker url Nibbels/ioBroker.sanlightmesh#v0.4.0 sanlightmesh --debug
 ```
 
 The normal repository-based `iobroker upgrade sanlightmesh` command remains unavailable until the adapter is accepted into an ioBroker repository.

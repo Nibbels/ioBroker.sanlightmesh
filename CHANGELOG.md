@@ -6,6 +6,8 @@ explicitly.
 
 ## Unreleased
 
+## 0.4.0 - 2026-07-19
+
 - Add dedicated read-only daylight-profile controls for one lamp and all lamps;
   normal refresh behavior remains unchanged.
 - Parse and retain the gateway's complete daylight configuration object,
@@ -28,6 +30,9 @@ explicitly.
 - Add an explicit `transition` classification for 13..15 light hours and cover
   shifted flowering schedules, all-dark exclusions, mixed flowering/vegetative
   profiles, unusual rounded schedules, multiple windows and metadata-only changes.
+- Hardware-validate native objects and conflict evaluation with identical
+  12:12 profiles, mixed 18:6/12:12 profiles and an always-dark lamp combined
+  with 12:12; confirm one-shot reset and corrected singular conflict wording.
 
 ## 0.3.0 - 2026-07-18
 

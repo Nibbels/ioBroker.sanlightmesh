@@ -1,8 +1,21 @@
 {
 	"common": {
 		"name": "sanlightmesh",
-		"version": "0.3.0",
+		"version": "0.4.0",
 		"news": {
+			"0.4.0": {
+				"en": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"de": "Gespeicherte Lampen-Tageslichtprofile auslesen, Photoperioden ableiten und Blüte-Konfliktrisiken erkennen.",
+				"ru": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"pt": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"nl": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"fr": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"it": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"es": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"pl": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"uk": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection.",
+				"zh-cn": "Add read-only lamp daylight-profile monitoring with derived photoperiod states and flowering-risk conflict detection."
+			},
 			"0.3.0": {
 				"en": "Add manual lamp clock synchronization and target controls with gateway clock snapshots and whole-second states.",
 				"de": "Manuelle Lampenuhr-Synchronisierung und Zielzeiten mit Gateway-Uhr-Snapshots und sekundengenauen Zuständen ergänzt.",

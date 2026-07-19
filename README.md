@@ -178,10 +178,11 @@ One adapter instance manages exactly one gateway ID and broker connection. Creat
 ## Status
 
 The documented topology was validated end to end on real Raspberry Pi hardware
-from 2026-07-16 through 2026-07-18, including adapter startup, MQTT API v1
+from 2026-07-16 through 2026-07-19, including adapter startup, MQTT API v1
 compatibility, object creation, read-only refresh, reversible brightness writes,
-manual clock control, a lamp power cycle and recovery synchronization. Version
-`0.3.0` is the current immutable release; the adapter remains pre-1.0.
+manual clock control, a lamp power cycle, recovery synchronization and stored
+daylight-profile analysis. Version `0.4.0` is the current immutable release;
+the adapter remains pre-1.0.
 
 ## Documentation
 
