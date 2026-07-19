@@ -13,10 +13,18 @@ explicitly.
 - Derive script-friendly light and dark hours, rounded `light:dark` schemas,
   cycle classifications, light-window counts and stable fingerprints from the
   actual datapoints rather than trusting the profile name.
-- Add gateway-wide schedule, schema and configuration conflict indicators plus
+- Add gateway-wide schedule, schema and configuration difference indicators plus
   a JSON fleet summary for automation and surveillance use.
-- Cover the hardware-observed `12:12`, `18:6` and all-dark profiles, unusual
-  rounded schedules, multiple light windows and metadata-only profile changes.
+- Evaluate effective plant-light exposure at the SANlight 20% threshold, ignore
+  always-dark lamps when combining exposure, and expose combined hours, schema,
+  cycle type and light-window count.
+- Raise a cultivation conflict only when at least one active lamp remains below
+  13 light hours but the union of active lamp schedules reaches the 13..15 hour
+  transition range or beyond; differing schedules at 13+ hours remain
+  informational.
+- Add an explicit `transition` classification for 13..15 light hours and cover
+  shifted flowering schedules, all-dark exclusions, mixed flowering/vegetative
+  profiles, unusual rounded schedules, multiple windows and metadata-only changes.
 
 ## 0.3.0 - 2026-07-18
 

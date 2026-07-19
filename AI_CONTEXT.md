@@ -93,11 +93,16 @@ derives light/dark hours, rounded light:dark schema, cultivation-cycle hints,
 fingerprints and gateway-wide conflicts from the actual datapoints. Profile
 names are metadata only and must never drive classification.
 
-Current cycle semantics use one piecewise-linear 24-hour curve. Multiple light
-windows are `custom`; exact all-dark/all-on are explicit; one-window rounded
-10..14 light hours are `flowering`, 16..20 are `vegetative`, and all other
-values are `custom`. These are automation hints. Scripts can use the numeric and
-JSON states for stricter policy.
+Current cycle semantics use the piecewise-linear 24-hour curve at an effective
+brightness threshold of 20%. Multiple light windows are `custom`; exact
+all-dark/all-on are explicit; one-window schedules below 13 light hours are
+`flowering`, 13..15 hours are `transition`, and more than 15 hours are
+`vegetative`. Gateway conflict evaluation unions the effective light windows of
+all active lamps, ignores always-dark lamps, and raises a cultivation conflict
+only when at least one active lamp is below 13 hours while the combined exposure
+reaches at least 13 hours. Raw schedule/configuration differences remain separate
+informational indicators. These values are automation hints; scripts can use the
+numeric and JSON states for stricter policy.
 
 ## Runtime packaging and compatibility
 

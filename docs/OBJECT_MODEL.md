@@ -34,21 +34,29 @@ Blackout and restore are rejected unless explicit blackout is enabled in the ins
 Fleet-level schedule evaluation for all currently present lamps with a verified
 daylight configuration:
 
-- `analysisVersion`
-- `verifiedLampCount`
-- `distinctScheduleCount`
-- `distinctConfigurationCount`
-- `distinctSchemaCount`
-- `conflict` — behavioral schedule fingerprints differ
+- `analysisVersion`, `effectiveLightThreshold`
+- `verifiedLampCount`, `activeLampCount`, `ignoredAlwaysDarkLampCount`
+- `distinctScheduleCount`, `distinctConfigurationCount`, `distinctSchemaCount`
+- `scheduleDifference` — raw schedule fingerprints differ
 - `configurationConflict` — complete profile ID/name/datapoints differ
-- `schemaConflict` — rounded schemas differ
-- `summary`
-- `summaryJson`
-- `lastEvaluatedAt`
+- `schemaConflict` — rounded per-lamp schemas differ
+- `combinedOnHours`, `combinedOffHours`
+- `combinedSchema`, `combinedCycleType`, `combinedLightWindowCount`
+- `transitionWarning`
+- `conflict`, `conflictReason`
+- `summary`, `summaryJson`, `lastEvaluatedAt`
 
-The conflict scope is the complete configured gateway, not a tent or room. A
-multi-zone installation may therefore show an intentional conflict. Scripts can
-parse `summaryJson` and apply their own address-to-zone mapping.
+The adapter unions the effective light windows of all active lamps. An
+`alwaysDark` lamp contributes no plant-light exposure and is counted in
+`ignoredAlwaysDarkLampCount`. `conflict` is deliberately narrower than a raw
+schedule difference: it becomes true only when at least one active lamp has less
+than 13 effective light hours, but the union of active schedules reaches at
+least 13 hours. This catches shifted 12:12 schedules or a 12:12 lamp combined
+with an 18:6 lamp without treating different vegetative schedules as an alarm.
+
+The scope is the complete configured gateway, not a tent or room. A multi-zone
+installation may therefore need to parse `summaryJson` and apply its own
+address-to-zone mapping.
 
 ## Lamp devices
 
@@ -93,7 +101,7 @@ The read-only configuration and its adapter-side interpretation:
 
 - `verified`, `verifiedAt`
 - `lastReadAt`, `lastReadOk`, `lastError`
-- `analysisVersion`, `analysisValid`, `analysisError`
+- `analysisVersion`, `effectiveLightThreshold`, `analysisValid`, `analysisError`
 - `profileId`, `profileName`, `valueCount`
 - `onHours`, `offHours`
 - `schema`
@@ -112,23 +120,25 @@ with `verified=true`: the gateway preserves the last valid configuration after a
 newer timeout or unknown response.
 
 The duration calculation treats the ordered datapoints as a piecewise-linear
-24-hour curve. Every non-zero-length segment with light above zero in its
-interior contributes to `onHours`; `offHours` is the remainder of 24 hours. The
-numeric values are rounded to three decimals.
+24-hour curve and counts only portions at or above 20% brightness. This matches
+the effective SANlight minimum and prevents sub-20% interpolation fragments from
+inflating a 12:12 profile to 12.033 hours. `offHours` is the remainder of 24
+hours; numeric values are rounded to three decimals.
 
-For one continuous light window, `schema` rounds the light duration to the
-nearest whole hour and derives the dark side as `24 - light`. Thus a window from
-18:02 to 20:23 is shown as `2:22`, while the numeric states remain approximately
-`2.35` and `21.65`. Multiple separate light windows use `schema=custom` even
-when their total duration resembles a conventional cycle.
+For one continuous light window, `schema` rounds the effective light duration to
+the nearest whole hour and derives the dark side as `24 - light`. Thus a window
+from 18:02 to 20:23 is shown as `2:22`, while the numeric states remain `2.35`
+and `21.65`. Multiple separate light windows use `schema=custom` even when their
+total duration resembles a conventional cycle.
 
 `cycleType` is an automation hint, not a horticultural guarantee:
 
 - exact zero light: `alwaysDark`
 - exact 24-hour light: `alwaysOn`
-- one window with rounded 10..14 light hours: `flowering`
-- one window with rounded 16..20 light hours: `vegetative`
-- every other or multi-window schedule: `custom`
+- one window below 13 light hours: `flowering`
+- one window from 13 through 15 light hours: `transition`
+- one window above 15 light hours: `vegetative`
+- every multi-window schedule: `custom`
 
 The profile name is never used for classification. Scripts with stricter rules
 should use `onHours`, `offHours`, `schema`, `lightWindowCount` and the JSON data.

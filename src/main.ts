@@ -49,7 +49,12 @@ import type {
 	NodeMeta,
 	NodeState,
 } from './lib/protocol';
-import { analyzeDaylightConfiguration, buildDaylightFleetSummary } from './lib/daylight';
+import {
+	DAYLIGHT_ANALYSIS_VERSION,
+	EFFECTIVE_LIGHT_THRESHOLD,
+	analyzeDaylightConfiguration,
+	buildDaylightFleetSummary,
+} from './lib/daylight';
 import type { DaylightFleetEntry } from './lib/daylight';
 
 interface PendingCommand {
@@ -333,7 +338,19 @@ class Sanlightmesh extends utils.Adapter {
 					'number',
 					'value',
 					false,
-					1,
+					DAYLIGHT_ANALYSIS_VERSION,
+				),
+			],
+			[
+				'gateway.daylight.effectiveLightThreshold',
+				this.stateCommon(
+					'Effective light threshold',
+					'Effektive Lichtschwelle',
+					'number',
+					'value',
+					false,
+					EFFECTIVE_LIGHT_THRESHOLD,
+					'%',
 				),
 			],
 			[
@@ -341,6 +358,21 @@ class Sanlightmesh extends utils.Adapter {
 				this.stateCommon(
 					'Verified daylight schedules',
 					'Verifizierte Tageslichtpläne',
+					'number',
+					'value',
+					false,
+					0,
+				),
+			],
+			[
+				'gateway.daylight.activeLampCount',
+				this.stateCommon('Active daylight schedules', 'Aktive Tageslichtpläne', 'number', 'value', false, 0),
+			],
+			[
+				'gateway.daylight.ignoredAlwaysDarkLampCount',
+				this.stateCommon(
+					'Always-dark lamps ignored for exposure',
+					'Für die Belichtung ignorierte dauerhaft dunkle Lampen',
 					'number',
 					'value',
 					false,
@@ -381,6 +413,85 @@ class Sanlightmesh extends utils.Adapter {
 				),
 			],
 			[
+				'gateway.daylight.scheduleDifference',
+				this.stateCommon(
+					'Daylight schedules differ',
+					'Tageslichtpläne unterscheiden sich',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
+				'gateway.daylight.combinedOnHours',
+				this.stateCommon(
+					'Combined plant-light hours',
+					'Kombinierte Pflanzen-Lichtstunden',
+					'number',
+					'value.interval',
+					false,
+					0,
+					'h',
+				),
+			],
+			[
+				'gateway.daylight.combinedOffHours',
+				this.stateCommon(
+					'Combined dark hours',
+					'Kombinierte Dunkelstunden',
+					'number',
+					'value.interval',
+					false,
+					24,
+					'h',
+				),
+			],
+			[
+				'gateway.daylight.combinedSchema',
+				this.stateCommon(
+					'Combined light:dark schema',
+					'Kombiniertes Licht:Dunkel-Schema',
+					'string',
+					'text',
+					false,
+					'0:24',
+				),
+			],
+			[
+				'gateway.daylight.combinedCycleType',
+				this.stateCommon(
+					'Combined cultivation cycle classification',
+					'Kombinierte Anbauzyklus-Klassifizierung',
+					'string',
+					'text',
+					false,
+					'alwaysDark',
+				),
+			],
+			[
+				'gateway.daylight.combinedLightWindowCount',
+				this.stateCommon(
+					'Combined light window count',
+					'Anzahl kombinierter Lichtfenster',
+					'number',
+					'value',
+					false,
+					0,
+				),
+			],
+			[
+				'gateway.daylight.transitionWarning',
+				this.stateCommon(
+					'Transition photoperiod warning',
+					'Warnung für Übergangs-Photoperiode',
+					'boolean',
+					'indicator',
+					false,
+					false,
+				),
+			],
+			[
 				'gateway.daylight.conflict',
 				this.stateCommon(
 					'Daylight schedule conflict',
@@ -389,6 +500,17 @@ class Sanlightmesh extends utils.Adapter {
 					'indicator',
 					false,
 					false,
+				),
+			],
+			[
+				'gateway.daylight.conflictReason',
+				this.stateCommon(
+					'Daylight conflict reason',
+					'Begründung des Tageslichtkonflikts',
+					'string',
+					'text',
+					false,
+					'',
 				),
 			],
 			[
@@ -810,7 +932,8 @@ class Sanlightmesh extends utils.Adapter {
 				this.setStateAsync(`${base}.lastReadAt`, '', true),
 				this.setStateAsync(`${base}.lastReadOk`, false, true),
 				this.setStateAsync(`${base}.lastError`, '', true),
-				this.setStateAsync(`${base}.analysisVersion`, 1, true),
+				this.setStateAsync(`${base}.analysisVersion`, DAYLIGHT_ANALYSIS_VERSION, true),
+				this.setStateAsync(`${base}.effectiveLightThreshold`, EFFECTIVE_LIGHT_THRESHOLD, true),
 				this.setStateAsync(`${base}.analysisValid`, false, true),
 				this.setStateAsync(`${base}.analysisError`, '', true),
 				this.setStateAsync(`${base}.profileId`, 0, true),
@@ -867,6 +990,7 @@ class Sanlightmesh extends utils.Adapter {
 				});
 				commonUpdates.push(
 					this.setStateAsync(`${base}.analysisVersion`, analysis.analysisVersion, true),
+					this.setStateAsync(`${base}.effectiveLightThreshold`, analysis.effectiveLightThreshold, true),
 					this.setStateAsync(`${base}.analysisValid`, true, true),
 					this.setStateAsync(`${base}.analysisError`, '', true),
 					this.setStateAsync(`${base}.onHours`, analysis.onHours, true),
@@ -880,7 +1004,8 @@ class Sanlightmesh extends utils.Adapter {
 			} catch (error) {
 				this.daylightByNode.delete(address);
 				commonUpdates.push(
-					this.setStateAsync(`${base}.analysisVersion`, 1, true),
+					this.setStateAsync(`${base}.analysisVersion`, DAYLIGHT_ANALYSIS_VERSION, true),
+					this.setStateAsync(`${base}.effectiveLightThreshold`, EFFECTIVE_LIGHT_THRESHOLD, true),
 					this.setStateAsync(`${base}.analysisValid`, false, true),
 					this.setStateAsync(`${base}.analysisError`, (error as Error).message, true),
 					this.setStateAsync(`${base}.onHours`, 0, true),
@@ -895,7 +1020,8 @@ class Sanlightmesh extends utils.Adapter {
 		} else {
 			this.daylightByNode.delete(address);
 			commonUpdates.push(
-				this.setStateAsync(`${base}.analysisVersion`, 1, true),
+				this.setStateAsync(`${base}.analysisVersion`, DAYLIGHT_ANALYSIS_VERSION, true),
+				this.setStateAsync(`${base}.effectiveLightThreshold`, EFFECTIVE_LIGHT_THRESHOLD, true),
 				this.setStateAsync(`${base}.analysisValid`, false, true),
 				this.setStateAsync(`${base}.analysisError`, '', true),
 				this.setStateAsync(`${base}.profileId`, 0, true),
@@ -922,11 +1048,22 @@ class Sanlightmesh extends utils.Adapter {
 		const summary = buildDaylightFleetSummary(entries);
 		await Promise.all([
 			this.setStateAsync('gateway.daylight.analysisVersion', summary.analysisVersion, true),
+			this.setStateAsync('gateway.daylight.effectiveLightThreshold', summary.effectiveLightThreshold, true),
 			this.setStateAsync('gateway.daylight.verifiedLampCount', summary.verifiedLampCount, true),
+			this.setStateAsync('gateway.daylight.activeLampCount', summary.activeLampCount, true),
+			this.setStateAsync('gateway.daylight.ignoredAlwaysDarkLampCount', summary.ignoredAlwaysDarkLampCount, true),
 			this.setStateAsync('gateway.daylight.distinctScheduleCount', summary.distinctScheduleCount, true),
 			this.setStateAsync('gateway.daylight.distinctConfigurationCount', summary.distinctConfigurationCount, true),
 			this.setStateAsync('gateway.daylight.distinctSchemaCount', summary.distinctSchemaCount, true),
+			this.setStateAsync('gateway.daylight.scheduleDifference', summary.scheduleDifference, true),
+			this.setStateAsync('gateway.daylight.combinedOnHours', summary.combinedOnHours, true),
+			this.setStateAsync('gateway.daylight.combinedOffHours', summary.combinedOffHours, true),
+			this.setStateAsync('gateway.daylight.combinedSchema', summary.combinedSchema, true),
+			this.setStateAsync('gateway.daylight.combinedCycleType', summary.combinedCycleType, true),
+			this.setStateAsync('gateway.daylight.combinedLightWindowCount', summary.combinedLightWindowCount, true),
+			this.setStateAsync('gateway.daylight.transitionWarning', summary.transitionWarning, true),
 			this.setStateAsync('gateway.daylight.conflict', summary.conflict, true),
+			this.setStateAsync('gateway.daylight.conflictReason', summary.conflictReason, true),
 			this.setStateAsync('gateway.daylight.configurationConflict', summary.configurationConflict, true),
 			this.setStateAsync('gateway.daylight.schemaConflict', summary.schemaConflict, true),
 			this.setStateAsync('gateway.daylight.summary', summary.summary, true),
@@ -1390,7 +1527,19 @@ class Sanlightmesh extends utils.Adapter {
 					'number',
 					'value',
 					false,
-					1,
+					DAYLIGHT_ANALYSIS_VERSION,
+				),
+			],
+			[
+				'daylight.effectiveLightThreshold',
+				this.stateCommon(
+					'Effective light threshold',
+					'Effektive Lichtschwelle',
+					'number',
+					'value',
+					false,
+					EFFECTIVE_LIGHT_THRESHOLD,
+					'%',
 				),
 			],
 			[

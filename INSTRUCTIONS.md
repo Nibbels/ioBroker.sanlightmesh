@@ -121,11 +121,15 @@ Classification is derived from the actual datapoints. Do not infer the cycle
 from `profileName`; the SANlight app may display dark:light wording while the
 adapter's `schema` consistently uses light:dark.
 
-`gateway.daylight.conflict` indicates that at least two present lamps have
-different behavioral schedules. `schemaConflict` is narrower and reports only
-different rounded schemas. In installations with multiple intentional grow
-zones, use `gateway.daylight.summaryJson` and group lamp addresses in your own
-script before treating a gateway-wide conflict as an alarm.
+`gateway.daylight.scheduleDifference`, `configurationConflict` and
+`schemaConflict` describe raw differences. `gateway.daylight.conflict` is a
+cultivation-risk signal: always-dark lamps are ignored, active light windows are
+combined, and a conflict is raised only when at least one active lamp is below
+13 light hours while the combined exposure reaches 13 hours or more. Use
+`combinedOnHours`, `combinedSchema`, `transitionWarning` and `conflictReason` for
+script decisions. In installations with multiple intentional grow zones, parse
+`gateway.daylight.summaryJson` and group addresses before treating the
+gateway-wide result as an alarm.
 
 The adapter preserves the complete gateway object in `daylight.gatewayJson` and
 the ordered profile in `daylight.configurationJson`. This lets JavaScript and

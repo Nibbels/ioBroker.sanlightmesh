@@ -111,8 +111,8 @@ Each lamp receives a native `daylight.*` object tree with:
 - profile ID, name and complete datapoint JSON;
 - exact decimal `onHours` and `offHours`;
 - a rounded readable `schema`, such as `12:12`, `18:6`, `24:0` or `0:24`;
-- a cultivation-oriented `cycleType` (`flowering`, `vegetative`, `alwaysOn`,
-  `alwaysDark` or `custom`);
+- a cultivation-oriented `cycleType` (`flowering`, `transition`, `vegetative`,
+  `alwaysOn`, `alwaysDark` or `custom`);
 - stable schedule and complete-configuration fingerprints;
 - verification, freshness, analysis validity/error, parser and raw gateway data.
 
@@ -120,11 +120,14 @@ The adapter derives these values from the datapoints, not from the profile
 name. A hardware-observed SANlight profile named `100% 6:18`, for example,
 contains an 18-hour light window and is exposed as schema `18:6`.
 
-`gateway.daylight.*` summarizes all currently present lamps and raises a
-schedule conflict when their behavioral schedule fingerprints differ. The
-summary is gateway-wide; different rooms or cultivation zones may intentionally
-use different schedules, so automation can use `summaryJson` to group addresses
-according to its own farm model.
+`gateway.daylight.*` summarizes all currently present lamps. It exposes raw
+schedule/configuration differences separately from cultivation risk, unions the
+20%-threshold light windows of active lamps, and ignores `alwaysDark` lamps for
+combined plant exposure. A conflict is raised only when at least one active lamp
+is below 13 light hours while the combined exposure reaches 13 hours or more.
+Different schedules where every active lamp already has at least 13 hours remain
+informational. The summary is gateway-wide; automation can use `summaryJson` to
+group addresses according to its own farm model.
 
 ## Current effective brightness
 
